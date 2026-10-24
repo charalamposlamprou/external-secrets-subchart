@@ -44,28 +44,51 @@ It does **not** install the operator. ESO and its CRDs must already be running i
 
 - Helm 3.16+ (CI tests 3.16, 3.22 and 4.3)
 - External Secrets Operator ≥ 0.17 (serves `external-secrets.io/v1`), or ≥ **2.5.0** for `aws.auth: podIdentity`. Every release of this chart is validated in CI against the CRDs of ESO **0.17.0**, **2.5.0** and **2.14.0**.
-- An EKS cluster with either:
-  - its [IAM OIDC provider](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) registered, for IRSA (the default). ESO's default RBAC already allows it to request tokens for the apps' ServiceAccounts; or
-  - the [EKS Pod Identity Agent](https://docs.aws.amazon.com/eks/latest/userguide/pod-id-agent-setup.html) add-on, for Pod Identity.
+- An EKS cluster prepared for the [authentication mode](#authentication-irsa-or-eks-pod-identity) you use: its IAM OIDC provider registered (IRSA), or the EKS Pod Identity Agent add-on (Pod Identity).
+
+## Authentication: IRSA or EKS Pod Identity
+
+Each app gets **its own IAM role** that can read only that app's parameters and secrets. The chart supports two ways for ESO to use that role, chosen per app (and per environment) with `aws.auth`:
+
+| | **IRSA** — `aws.auth: irsa` (default) | **Pod Identity** — `aws.auth: podIdentity` |
+|---|---|---|
+| **In one sentence** | ESO uses a ServiceAccount the chart creates for the app, which carries the app's role | ESO uses its own Pod Identity credentials and assumes the app's role, tagged with the app's namespace |
+| **Platform setup, once per cluster** | The cluster's [IAM OIDC provider](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) is registered | [EKS Pod Identity Agent](https://docs.aws.amazon.com/eks/latest/userguide/pod-id-agent-setup.html) add-on, ESO ≥ 2.5.0, and the [`eso-pod-identity`](examples/terraform/eso-pod-identity) Terraform module for the ESO controller's role |
+| **Per app (Terraform)** | `irsa-role` module (default `trust = ["irsa"]`) | `irsa-role` module with `trust = ["pod_identity"]` and `eso_controller_role_arn` |
+| **Per app (values)** | nothing extra | `aws.auth: podIdentity` |
+| **The chart renders** | ServiceAccount `<release>-secrets` (role annotation, no token automount); stores with `auth.jwt.serviceAccountRef` | no per-app ServiceAccount; stores with `role: <aws.roleArn>` and `sessionTagsPolicy: Simple` |
+| **ESO calls** | `AssumeRoleWithWebIdentity` with the ServiceAccount's token | `AssumeRole` with session tags `esoNamespace`, `esoStoreName`, `esoStoreKind` |
+| **The app role trusts** | the cluster's OIDC provider, for `system:serviceaccount:<namespace>:<release>-secrets` | the ESO controller's role, only when `esoNamespace` equals the app's namespace |
+| **What keeps apps apart** | Kubernetes: a SecretStore can only use a ServiceAccount in its own namespace | IAM: each app role's trust only accepts its own namespace |
+| **ESO version** | ≥ 0.17 | ≥ 2.5.0 (older versions reject `sessionTagsPolicy`) |
+| **Adding or replacing a cluster** | each app role's trust names a cluster's OIDC provider, so app roles are re-applied for the new cluster | app roles trust the controller role, not a cluster; only `eso_controller_role_arn` changes (or nothing, if one controller role is associated with several clusters) |
+
+```
+IRSA:          SecretStore ─(token for SA my-app-secrets)──> STS AssumeRoleWithWebIdentity ───────────> app role ─> SSM / Secrets Manager
+Pod Identity:  SecretStore ─(ESO controller's credentials)─> STS AssumeRole + tag esoNamespace=my-app ─> app role ─> SSM / Secrets Manager
+```
+
+**Which one?** If you're not sure, use **IRSA**: it needs no extra cluster setup and works with every supported ESO version. Choose **Pod Identity** if your clusters already use it, or you add and replace clusters often and want app roles that aren't tied to one cluster. In both modes the app's own pods never get the role. You don't have to pick one for everything: both [work side by side](#using-both-in-one-cluster), and an app can [move from one to the other](#moving-an-app-from-irsa-to-pod-identity) without downtime.
+
+The Terraform module that creates the app role is called `irsa-role` for historical reasons; it serves both modes through its `trust` input.
 
 ## Add it to your existing chart
 
-Each app gets **its own IAM role** that can read only that app's parameters and secrets. These steps use the default **IRSA** authentication. For **EKS Pod Identity**, and to compare the two, see [Authentication](#authentication-irsa-or-eks-pod-identity); steps 2–5 are the same in both. With IRSA, only ESO uses the role's ServiceAccount (`automountServiceAccountToken: false`). Your app's pods keep their own account and can't assume the role.
+The steps are the same for both authentication modes, except where a step shows an **IRSA** and a **Pod Identity** variant (steps 1, 3 and 5).
 
 ```
-parameterStore.secrets.* ─> SecretStore "my-app-parameter-store" ─┐
-                                                                  ├─> ServiceAccount "my-app-secrets" ─(IRSA)─> IAM role "my-cluster-my-app-secrets"
-secretsManager.secrets.* ─> SecretStore "my-app-secrets-manager" ─┘                                            ├─> Parameter Store: /my-app/*
-                                                                                                               └─> Secrets Manager: my-app/*
+parameterStore.secrets.* ─> SecretStore "my-app-parameter-store" ─┐                                ┌─> Parameter Store: /my-app/*
+                                                                  ├─(IRSA or Pod Identity)─> app role ─┤
+secretsManager.secrets.* ─> SecretStore "my-app-secrets-manager" ─┘                                └─> Secrets Manager: my-app/*
 ```
 
 ### 1. Create the app's IAM role
 
-With the Terraform in [`examples/terraform/irsa-role`](examples/terraform/irsa-role):
+**IRSA.** One Terraform module per app, with [`examples/terraform/irsa-role`](examples/terraform/irsa-role):
 
 ```hcl
 module "my_app_secrets_role" {
-  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.6.0"
+  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.6.1"
 
   cluster_name = "my-cluster"
   app          = "my-app"       # role "my-cluster-my-app-secrets"
@@ -80,7 +103,6 @@ module "my_app_secrets_role" {
   # role_name               = "my-app-secrets"      # default "<cluster_name>-<app>-secrets"
   # permissions_boundary    = "arn:aws:iam::123456789012:policy/boundary"
   # tags                    = {team = "payments"}
-  # trust                   = ["irsa"]              # or ["pod_identity"]; see Authentication
 }
 
 output "my_app_secrets_role_arn" {
@@ -89,6 +111,39 @@ output "my_app_secrets_role_arn" {
 ```
 
 The role trusts only `system:serviceaccount:<namespace>:<service_account>` through the cluster's OIDC provider. The chart names that ServiceAccount `<release name>-secrets` (change it with `aws.serviceAccountName`), so with a release named `my-app` the defaults line up.
+
+**Pod Identity.** First, **once per cluster** (platform team): install the EKS Pod Identity Agent add-on and ESO ≥ 2.5.0, then give the ESO controller its role with [`examples/terraform/eso-pod-identity`](examples/terraform/eso-pod-identity):
+
+```hcl
+module "eso_pod_identity" {
+  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/eso-pod-identity?ref=v0.6.1"
+
+  cluster_name  = "my-cluster"
+  app_role_arns = ["arn:aws:iam::123456789012:role/my-cluster-*-secrets"]   # app roles it may assume
+  # namespace / service_account default to the ESO chart's: external-secrets / external-secrets
+}
+```
+
+The controller role can't read any secret itself; it can only assume the listed app roles. Then, **per app**, the same `irsa-role` module as above, plus two inputs:
+
+```hcl
+module "my_app_secrets_role" {
+  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.6.1"
+
+  cluster_name    = "my-cluster"
+  app             = "my-app"
+  namespace       = "my-app"        # must be where the app's ExternalSecrets live (checked via esoNamespace)
+  parameter_store = true
+  secrets_manager = true
+
+  trust                   = ["pod_identity"]
+  eso_controller_role_arn = module.eso_pod_identity.role_arn
+}
+```
+
+The role then trusts only the ESO controller's role, and only for sessions tagged `esoNamespace = my-app`.
+
+**Both modes:** the role's permissions are the same:
 
 | Input | Actions | Resources |
 |-------|---------|-----------|
@@ -105,7 +160,7 @@ The role is named `<cluster_name>-<app>-secrets` by default, because IAM role na
 # my-app/Chart.yaml
 dependencies:
   - name: external-secrets-subchart
-    version: 0.6.0
+    version: 0.6.1
     repository: oci://ghcr.io/charalamposlamprou/charts
     alias: secrets               # values live under `secrets:`
     condition: secrets.enabled
@@ -125,6 +180,7 @@ secrets:
   aws:
     roleArn: arn:aws:iam::123456789012:role/my-cluster-my-app-secrets   # role_arn from step 1
     region: eu-west-1
+    # auth: podIdentity          # only for Pod Identity; IRSA is the default
 
   parameterStore:
     enabled: true
@@ -147,6 +203,8 @@ secrets:
         DB_PASS: {key: my-app/db, property: password}
         API_TOKEN: my-app/api-token                     # a plain-text secret
 ```
+
+The only difference between the modes is that one `aws.auth` line. `aws.serviceAccountName` and `aws.serviceAccountAnnotations` apply to IRSA only; rendering fails if they're set with `podIdentity`.
 
 Each entry under `secrets` is one Kubernetes Secret with the same name. Inside an entry, every line is `SECRET_KEY: <where it comes from>`:
 
@@ -176,11 +234,27 @@ envFrom:
 
 ### 5. Check it works
 
+Both modes:
+
 ```bash
-kubectl -n my-app get serviceaccount my-app-secrets -o jsonpath='{.metadata.annotations}'   # role ARN
 kubectl -n my-app get secretstore,externalsecret   # Valid / SecretSynced, READY True
 kubectl -n my-app get secret my-app-config -o jsonpath='{.data}'
 ```
+
+**IRSA:** the app's ServiceAccount carries the role:
+
+```bash
+kubectl -n my-app get serviceaccount my-app-secrets -o jsonpath='{.metadata.annotations}'
+```
+
+**Pod Identity:** there's no per-app ServiceAccount; the stores carry the role, and the ESO controller has the Pod Identity association:
+
+```bash
+kubectl -n my-app get secretstore my-app-parameter-store -o jsonpath='{.spec.provider.aws.role}'
+aws eks list-pod-identity-associations --cluster-name my-cluster --namespace external-secrets
+```
+
+If a store isn't `Valid`, see [Troubleshooting](#troubleshooting); there are rows for each mode.
 
 A complete working example is in [`examples/parent-chart`](examples/parent-chart).
 
@@ -225,7 +299,7 @@ When dev, staging and prod are separate AWS accounts (each with its own EKS clus
 ```hcl
 # environments/dev/main.tf (provider configured for the dev account)
 module "my_app_secrets_role" {
-  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.6.0"
+  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.6.1"
 
   cluster_name    = "dev"            # the dev account's EKS cluster
   app             = "my-app"
@@ -276,88 +350,23 @@ helm upgrade --install my-app ./my-app -n my-app -f my-app/values-prod.yaml
 
 Helm always applies the chart's own `values.yaml`, so only the environment's file is passed with `-f`.
 
-Each environment's role trusts only its own cluster's OIDC provider and grants access only within its own account, so dev can't read prod's secrets. If an environment encrypts with a customer-managed KMS key, pass that account's key in `kms_key_arns` for that environment.
+Each environment's role trusts only its own environment (its cluster's OIDC provider with IRSA, its ESO controller role with Pod Identity) and grants access only within its own account, so dev can't read prod's secrets. If an environment encrypts with a customer-managed KMS key, pass that account's key in `kms_key_arns` for that environment.
 
-## Authentication: IRSA or EKS Pod Identity
-
-The chart supports two ways for ESO to obtain each app's IAM role. Choose one with `aws.auth`, per app and per environment. **IRSA is the default**, and nothing changes for existing apps.
-
-| | `aws.auth: irsa` (default) | `aws.auth: podIdentity` |
-|---|---|---|
-| **How ESO gets the role** | Requests a token for the app's ServiceAccount `<release>-secrets` and calls `AssumeRoleWithWebIdentity` with `aws.roleArn` | Uses its **own** EKS Pod Identity credentials, then calls `AssumeRole` into `aws.roleArn`, sending session tags (`esoNamespace`, `esoStoreName`, `esoStoreKind`) |
-| **What the chart renders** | ServiceAccount `<release>-secrets` (role annotation, no token automount); stores with `auth.jwt.serviceAccountRef` | No per-app ServiceAccount; stores with `role: <aws.roleArn>` and `sessionTagsPolicy: Simple` |
-| **App role trusts** | The cluster's OIDC provider, for `system:serviceaccount:<namespace>:<release>-secrets` | The ESO controller's role, only when the session tag `esoNamespace` equals the app's namespace (`sts:AssumeRole` + `sts:TagSession`) |
-| **What keeps apps apart** | Kubernetes: a SecretStore can only use a ServiceAccount in its own namespace | IAM: each role's trust policy only accepts its own namespace |
-| **Cluster setup (platform, once)** | IAM OIDC provider registered | EKS Pod Identity Agent add-on, plus the [`eso-pod-identity`](examples/terraform/eso-pod-identity) module (controller role and Pod Identity association) |
-| **ESO version** | ≥ 0.17 | ≥ 2.5.0 (session tags; older versions reject `sessionTagsPolicy`) |
-| **Adding or replacing a cluster** | Every app role's trust names a cluster's OIDC provider, so each app role is re-applied for the new cluster | App roles trust the ESO controller's role, not a cluster. The new cluster needs its controller role and association; app roles change only by switching `eso_controller_role_arn` to that role (or not at all, if you associate one controller role with several clusters) |
-| **Choose it when** | You want the simplest, widely documented setup, or run ESO older than 2.5 | You add or replace clusters often, or prefer Pod Identity across your EKS estate |
-
-```
-IRSA:          SecretStore ─(token for SA my-app-secrets)─> STS AssumeRoleWithWebIdentity ─> role my-app ─> SSM / Secrets Manager
-Pod Identity:  SecretStore ─(ESO controller's Pod Identity)─> STS AssumeRole + tag esoNamespace=my-app ─> role my-app ─> SSM / Secrets Manager
-```
-
-### Set up Pod Identity
-
-**1. Once per cluster (platform):** install the EKS Pod Identity Agent add-on and ESO ≥ 2.5.0. Then give the ESO controller its role with [`examples/terraform/eso-pod-identity`](examples/terraform/eso-pod-identity):
-
-```hcl
-module "eso_pod_identity" {
-  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/eso-pod-identity?ref=v0.6.0"
-
-  cluster_name = "dev"
-  # namespace / service_account default to ESO's chart defaults: external-secrets / external-secrets
-  app_role_arns = ["arn:aws:iam::111111111111:role/dev-*-secrets"]   # app roles it may assume
-}
-```
-
-The controller role can't read any secret itself. It can only assume the listed app roles, and each app role still only accepts its own namespace.
-
-**2. Per app:** create the app role with `trust = ["pod_identity"]` and the controller role from step 1:
-
-```hcl
-module "my_app_secrets_role" {
-  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.6.0"
-
-  cluster_name            = "dev"
-  app                     = "my-app"
-  namespace               = "my-app"            # must be where the app's ExternalSecrets live
-  parameter_store         = true
-  secrets_manager         = true
-  trust                   = ["pod_identity"]
-  eso_controller_role_arn = module.eso_pod_identity.role_arn
-}
-```
-
-**3. Values:** set `aws.auth: podIdentity`. Everything else stays the same:
-
-```yaml
-secrets:
-  aws:
-    auth: podIdentity
-    roleArn: arn:aws:iam::111111111111:role/dev-my-app-secrets
-    region: eu-west-1
-  parameterStore:
-    enabled: true
-    secrets:
-      my-app-config:
-        LOG_LEVEL: /my-app/log-level
-```
-
-`aws.serviceAccountName` and `aws.serviceAccountAnnotations` are IRSA-only; rendering fails if they're set with `podIdentity`.
+**With Pod Identity**, each account also gets its own ESO controller role: apply `eso-pod-identity` once per cluster, and pass that environment's controller role to the environment's app roles (`eso_controller_role_arn`). `aws.auth: podIdentity` goes in the shared `values.yaml` if every environment uses it, or in the environment files if only some do.
 
 ### Using both in one cluster
 
-The two modes coexist. ESO chooses credentials separately for each store: a store with `auth.jwt` (IRSA) uses its app's ServiceAccount token, and a store without `auth` (Pod Identity) uses the controller's own credentials. Giving the ESO controller Pod Identity therefore doesn't affect apps that stay on IRSA, and you can move apps one at a time, or never. The [e2e test](#development) runs IRSA and Pod Identity apps side by side in one cluster, and checks from the recorded STS calls that each used its own path.
+The two modes coexist. ESO chooses credentials separately for each store: a store with `auth.jwt` (IRSA) uses its app's ServiceAccount token, and a store without `auth` (Pod Identity) uses the controller's own credentials. Giving the ESO controller Pod Identity therefore doesn't affect apps that stay on IRSA, so you can move apps one at a time, or never. The [e2e test](#development) runs IRSA and Pod Identity apps side by side in one cluster, and checks from the recorded STS calls that each used its own path.
 
 ### Moving an app from IRSA to Pod Identity
 
-1. Set `trust = ["irsa", "pod_identity"]` (and `eso_controller_role_arn`) on the app's role, and apply. The role now accepts both.
-2. Deploy the app with `aws.auth: podIdentity`. The ServiceAccount is removed, the stores switch to `role:`, and ESO re-syncs. The Kubernetes Secrets stay in place.
-3. Once the stores show `Valid`, set `trust = ["pod_identity"]` and apply.
+Requires the [Pod Identity platform setup](#1-create-the-apps-iam-role) on the cluster first.
 
-Going back works the same way in reverse.
+1. **Trust both:** set `trust = ["irsa", "pod_identity"]` and `eso_controller_role_arn` on the app's role, and apply.
+2. **Switch the app:** deploy it with `aws.auth: podIdentity`. The ServiceAccount is removed, the stores switch to `role:`, and ESO re-syncs. The Kubernetes Secrets stay in place.
+3. **Trust only Pod Identity:** once the stores show `Valid`, set `trust = ["pod_identity"]` and apply.
+
+Going back works the same way in reverse: trust both, deploy with `aws.auth: irsa`, then trust only `["irsa"]`.
 
 ## How this compares to other approaches
 
@@ -547,7 +556,7 @@ Every item accepts `enabled` (default `true`), `labels` and `annotations`. Names
 | `no matches for kind "ExternalSecret" in version "external-secrets.io/v1"` | ESO isn't installed, or is older than 0.17. Install or upgrade ESO. (On a very old operator you can set `apiVersion: external-secrets.io/v1beta1`; ESO 2.x no longer serves it.) |
 | `SecretStore "…" exists and cannot be imported into the current release` | Two releases render the same resource name in one namespace. Since 0.5 the AWS stores and ServiceAccount include the release name; for ExternalSecrets, rename one of the entries. |
 | Pods still see old values | ESO updated the Secret but the pods haven't restarted; see [Restart pods when secrets change](#restart-pods-when-secrets-change). |
-| SecretStore not `Valid`: `WebIdentityErr` / `AccessDenied ... AssumeRoleWithWebIdentity` | The role's trust policy doesn't match the ServiceAccount. It must allow `system:serviceaccount:<namespace>:<name>` exactly as rendered (`<release>-secrets` by default) via the cluster's OIDC provider. Check `kubectl -n <ns> get sa <name> -o yaml` for the `eks.amazonaws.com/role-arn` annotation. |
+| IRSA: SecretStore not `Valid`, `WebIdentityErr` / `AccessDenied ... AssumeRoleWithWebIdentity` | The role's trust policy doesn't match the ServiceAccount. It must allow `system:serviceaccount:<namespace>:<name>` exactly as rendered (`<release>-secrets` by default) via the cluster's OIDC provider. Check `kubectl -n <ns> get sa <name> -o yaml` for the `eks.amazonaws.com/role-arn` annotation. |
 | ExternalSecret `SecretSyncedError` with `AccessDeniedException` | The role can be assumed but can't read that parameter or secret: widen `parameter_path_prefixes` / `secret_name_prefixes`, or add `kms_key_arns` for a customer-managed KMS key. |
 | `unknown field "spec.provider.aws.sessionTagsPolicy"` | `aws.auth: podIdentity` on ESO older than 2.5.0. Upgrade ESO, or keep `aws.auth: irsa`. |
 | Pod Identity: SecretStore not `Valid`, `AccessDenied ... sts:AssumeRole` or `sts:TagSession` | The app role's trust doesn't accept this request. Check that it has `trust` including `pod_identity` with the right `eso_controller_role_arn`, that `namespace` is where the ExternalSecrets live (it's matched against the `esoNamespace` tag), and that the controller role's `app_role_arns` covers the app role. |
