@@ -1,4 +1,6 @@
-# Master switch off: nothing renders, even with invalid items.
+# Master switch off: nothing renders, even with enabled features and invalid items.
 enabled: false
 externalSecrets:
-  broken: {}
+  enabled: true
+  items:
+    broken: {}

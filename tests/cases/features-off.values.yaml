@@ -1,0 +1,17 @@
+# Features are opt-in: items of a feature without `enabled: true` don't render.
+defaults:
+  secretStoreRef: {name: somewhere}
+externalSecrets:
+  items:
+    not-rendered:
+      dataFrom: [{extract: {key: k}}]
+pushSecrets:
+  enabled: false
+  items:
+    not-rendered:
+      selector: {secret: {name: s}}
+      data: [{match: {secretKey: k, remoteRef: {remoteKey: k}}}]
+aws:
+  roleArn: arn:aws:iam::123456789012:role/unused
+  region: eu-west-1
+  secretsManager: {enabled: true}

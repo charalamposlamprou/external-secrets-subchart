@@ -1,3 +1,5 @@
+# Exercises every feature (all enabled) with the generic stores; tests/cases/aws.values.yaml
+# covers the aws block.
 namePrefix: "{{ .Release.Name }}-"
 commonLabels:
   team: platform
@@ -5,76 +7,86 @@ defaults:
   secretStoreRef:
     name: vault-backend
 secretStores:
-  vault-backend:
-    provider:
-      vault:
-        server: https://vault.example.com
-        path: secret
-        version: v2
-        auth:
-          kubernetes:
-            mountPath: kubernetes
-            role: "{{ .Release.Name }}"
-  disabled-store:
-    enabled: false
-    provider: {fake: {}}
+  enabled: true
+  items:
+    vault-backend:
+      provider:
+        vault:
+          server: https://vault.example.com
+          path: secret
+          version: v2
+          auth:
+            kubernetes:
+              mountPath: kubernetes
+              role: "{{ .Release.Name }}"
+    disabled-store:
+      enabled: false
+      provider: {fake: {}}
 clusterSecretStores:
-  aws-global:
-    provider:
-      aws:
-        service: SecretsManager
-        region: eu-west-1
+  enabled: true
+  items:
+    aws-global:
+      provider:
+        aws:
+          service: SecretsManager
+          region: eu-west-1
 externalSecrets:
-  db-credentials:
-    target:
-      template:
-        type: Opaque
-        data:
-          DATABASE_URL: "postgres://{{ .username }}:{{ .password }}@db:5432/app"
-    data:
-      - secretKey: username
-        remoteRef: {key: app/db, property: username}
-      - secretKey: password
-        remoteRef: {key: app/db, property: password}
-  aws-config:
-    secretStoreRef: {name: aws-global, kind: ClusterSecretStore}
-    refreshInterval: 15m
-    labels: {team: app}   # overrides commonLabels.team
-    annotations: {argocd.argoproj.io/sync-wave: "-1"}
-    dataFrom:
-      - extract: {key: app/config}
-  fetch-once:
-    refreshInterval: 0     # int 0 = never refresh; must not fall back to defaults
-    dataFrom:
-      - extract: {key: app/static}
-  removed-by-override: null
-clusterExternalSecrets:
-  registry:
-    namespaceSelectors:
-      - matchLabels: {team: payments}
-    externalSecretSpec:
-      secretStoreRef: {name: aws-global, kind: ClusterSecretStore}
+  enabled: true
+  items:
+    db-credentials:
       target:
-        name: registry-creds
         template:
-          type: kubernetes.io/dockerconfigjson
+          type: Opaque
           data:
-            .dockerconfigjson: "{{ .config }}"
+            DATABASE_URL: "postgres://{{ .username }}:{{ .password }}@db:5432/app"
+      data:
+        - secretKey: username
+          remoteRef: {key: app/db, property: username}
+        - secretKey: password
+          remoteRef: {key: app/db, property: password}
+    aws-config:
+      secretStoreRef: {name: aws-global, kind: ClusterSecretStore}
+      refreshInterval: 15m
+      labels: {team: app}   # overrides commonLabels.team
+      annotations: {argocd.argoproj.io/sync-wave: "-1"}
       dataFrom:
-        - extract: {key: shared/registry}
+        - extract: {key: app/config}
+    fetch-once:
+      refreshInterval: 0     # int 0 = never refresh; must not fall back to defaults
+      dataFrom:
+        - extract: {key: app/static}
+    removed-by-override: null
+clusterExternalSecrets:
+  enabled: true
+  items:
+    registry:
+      namespaceSelectors:
+        - matchLabels: {team: payments}
+      externalSecretSpec:
+        secretStoreRef: {name: aws-global, kind: ClusterSecretStore}
+        target:
+          name: registry-creds
+          template:
+            type: kubernetes.io/dockerconfigjson
+            data:
+              .dockerconfigjson: "{{ .config }}"
+        dataFrom:
+          - extract: {key: shared/registry}
 pushSecrets:
-  by-label:
-    secretStoreRefs:
-      - labelSelector:
-          matchLabels: {push-target: "true"}
-    selector: {secret: {name: api-key}}
-    data:
-      - match:
-          secretKey: key
-          remoteRef: {remoteKey: app/api-key-copy}
-  api-key:
-    selector: {secret: {name: api-key}}
-    data:
-      - match:
-          secretKey: key
-          remoteRef: {remoteKey: app/api-key, property: key}
+  enabled: true
+  items:
+    by-label:
+      secretStoreRefs:
+        - labelSelector:
+            matchLabels: {push-target: "true"}
+      selector: {secret: {name: api-key}}
+      data:
+        - match:
+            secretKey: key
+            remoteRef: {remoteKey: app/api-key-copy}
+    api-key:
+      selector: {secret: {name: api-key}}
+      data:
+        - match:
+            secretKey: key
+            remoteRef: {remoteKey: app/api-key, property: key}

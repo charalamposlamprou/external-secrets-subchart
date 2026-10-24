@@ -1,0 +1,34 @@
+# The aws block: one IAM role, both services, items choosing by source.
+namePrefix: "{{ .Release.Name }}-"
+aws:
+  enabled: true
+  roleArn: arn:aws:iam::123456789012:role/ci-secrets
+  region: eu-west-1
+  serviceAccountAnnotations: {owner: platform}
+  secretsManager: {enabled: true}
+  parameterStore: {enabled: true}
+externalSecrets:
+  enabled: true
+  items:
+    from-default:              # no source: aws.defaultSource -> secretsManager
+      dataFrom:
+        - extract: {key: ci/env}
+    from-parameters:
+      source: parameterStore
+      data:
+        - secretKey: LOG_LEVEL
+          remoteRef: {key: /ci/log-level}
+      dataFrom:
+        - find: {path: /ci/config/}
+    explicit-ref:              # secretStoreRef to an aws store by its key also gets the prefix
+      secretStoreRef: {name: aws-parameter-store}
+      dataFrom:
+        - extract: {key: /ci/other}
+pushSecrets:
+  enabled: true
+  items:
+    to-secrets-manager:
+      source: secretsManager
+      selector: {secret: {name: generated}}
+      data:
+        - match: {secretKey: token, remoteRef: {remoteKey: ci/generated-token}}

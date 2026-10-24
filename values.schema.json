@@ -8,148 +8,464 @@
       "description": "Helm global values passed down by a parent chart.",
       "type": "object"
     },
-    "enabled": {"type": "boolean"},
-    "apiVersion": {"type": "string", "pattern": "^external-secrets\\.io/"},
-    "pushSecretApiVersion": {"type": "string", "pattern": "^external-secrets\\.io/"},
-    "namePrefix": {"type": "string"},
-    "commonLabels": {"$ref": "#/definitions/stringMap"},
-    "commonAnnotations": {"$ref": "#/definitions/stringMap"},
+    "enabled": {
+      "type": "boolean"
+    },
+    "apiVersion": {
+      "type": "string",
+      "pattern": "^external-secrets\\.io/"
+    },
+    "pushSecretApiVersion": {
+      "type": "string",
+      "pattern": "^external-secrets\\.io/"
+    },
+    "namePrefix": {
+      "type": "string"
+    },
+    "commonLabels": {
+      "$ref": "#/definitions/stringMap"
+    },
+    "commonAnnotations": {
+      "$ref": "#/definitions/stringMap"
+    },
     "defaults": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "refreshInterval": {"$ref": "#/definitions/duration"},
+        "refreshInterval": {
+          "$ref": "#/definitions/duration"
+        },
         "secretStoreRef": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "name": {"type": "string"},
-            "kind": {"$ref": "#/definitions/storeKind"}
+            "name": {
+              "type": "string"
+            },
+            "kind": {
+              "$ref": "#/definitions/storeKind"
+            }
           }
         },
-        "target": {"type": "object"}
-      }
-    },
-    "serviceAccounts": {
-      "type": "object",
-      "additionalProperties": {
-        "type": ["object", "null"],
-        "additionalProperties": false,
-        "properties": {
-          "enabled": {"type": "boolean"},
-          "namespace": {"type": "string"},
-          "labels": {"$ref": "#/definitions/stringMap"},
-          "annotations": {"$ref": "#/definitions/stringMap"},
-          "roleArn": {
-            "description": "IAM role ARN for IRSA, or a Helm template that renders one.",
-            "type": "string",
-            "pattern": "^(arn:aws[a-z-]*:iam::[0-9]{12}:role/.+|.*\\{\\{.*)$"
-          }
+        "target": {
+          "type": "object"
         }
       }
     },
-    "secretStores": {"$ref": "#/definitions/storeMap"},
-    "clusterSecretStores": {"$ref": "#/definitions/storeMap"},
+    "aws": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "roleArn": {
+          "$ref": "#/definitions/roleArn"
+        },
+        "region": {
+          "type": "string"
+        },
+        "serviceAccountName": {
+          "type": "string"
+        },
+        "serviceAccountAnnotations": {
+          "$ref": "#/definitions/stringMap"
+        },
+        "secretsManager": {
+          "$ref": "#/definitions/awsService"
+        },
+        "parameterStore": {
+          "$ref": "#/definitions/awsService"
+        },
+        "defaultSource": {
+          "enum": [
+            "",
+            "secretsManager",
+            "parameterStore"
+          ]
+        }
+      }
+    },
     "externalSecrets": {
-      "type": "object",
-      "additionalProperties": {
-        "type": ["object", "null"],
-        "additionalProperties": false,
-        "properties": {
-          "enabled": {"type": "boolean"},
-          "namespace": {"type": "string"},
-          "labels": {"$ref": "#/definitions/stringMap"},
-          "annotations": {"$ref": "#/definitions/stringMap"},
-          "refreshInterval": {"$ref": "#/definitions/duration"},
-          "refreshPolicy": {"enum": ["CreatedOnce", "Periodic", "OnChange"]},
-          "secretStoreRef": {"$ref": "#/definitions/storeRef"},
-          "target": {"type": "object"},
-          "data": {"type": "array", "items": {"type": "object"}},
-          "dataFrom": {"type": "array", "items": {"type": "object"}}
+      "allOf": [
+        {
+          "$ref": "#/definitions/feature"
         }
-      }
-    },
-    "clusterExternalSecrets": {
-      "type": "object",
-      "additionalProperties": {
-        "type": ["object", "null"],
-        "additionalProperties": false,
-        "properties": {
-          "enabled": {"type": "boolean"},
-          "labels": {"$ref": "#/definitions/stringMap"},
-          "annotations": {"$ref": "#/definitions/stringMap"},
-          "externalSecretName": {"type": "string"},
-          "externalSecretSpec": {
-            "type": "object",
-            "properties": {"secretStoreRef": {"$ref": "#/definitions/storeRef"}}
-          },
-          "namespaceSelectors": {"type": "array", "items": {"type": "object"}},
-          "namespaces": {"type": "array", "items": {"type": "string"}},
-          "refreshTime": {"$ref": "#/definitions/duration"}
+      ],
+      "properties": {
+        "items": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "namespace": {
+                "type": "string"
+              },
+              "labels": {
+                "$ref": "#/definitions/stringMap"
+              },
+              "annotations": {
+                "$ref": "#/definitions/stringMap"
+              },
+              "source": {
+                "$ref": "#/definitions/source"
+              },
+              "refreshInterval": {
+                "$ref": "#/definitions/duration"
+              },
+              "refreshPolicy": {
+                "enum": [
+                  "CreatedOnce",
+                  "Periodic",
+                  "OnChange"
+                ]
+              },
+              "secretStoreRef": {
+                "$ref": "#/definitions/storeRef"
+              },
+              "target": {
+                "type": "object"
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "dataFrom": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          }
         }
       }
     },
     "pushSecrets": {
-      "type": "object",
-      "additionalProperties": {
-        "type": ["object", "null"],
-        "additionalProperties": false,
-        "properties": {
-          "enabled": {"type": "boolean"},
-          "namespace": {"type": "string"},
-          "labels": {"$ref": "#/definitions/stringMap"},
-          "annotations": {"$ref": "#/definitions/stringMap"},
-          "refreshInterval": {"$ref": "#/definitions/duration"},
-          "updatePolicy": {"enum": ["Replace", "IfNotExists"]},
-          "deletionPolicy": {"enum": ["Delete", "None"]},
-          "secretStoreRefs": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "name": {"type": "string"},
-                "kind": {"$ref": "#/definitions/storeKind"},
-                "labelSelector": {"type": "object"}
+      "allOf": [
+        {
+          "$ref": "#/definitions/feature"
+        }
+      ],
+      "properties": {
+        "items": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "namespace": {
+                "type": "string"
+              },
+              "labels": {
+                "$ref": "#/definitions/stringMap"
+              },
+              "annotations": {
+                "$ref": "#/definitions/stringMap"
+              },
+              "source": {
+                "$ref": "#/definitions/source"
+              },
+              "refreshInterval": {
+                "$ref": "#/definitions/duration"
+              },
+              "updatePolicy": {
+                "enum": [
+                  "Replace",
+                  "IfNotExists"
+                ]
+              },
+              "deletionPolicy": {
+                "enum": [
+                  "Delete",
+                  "None"
+                ]
+              },
+              "secretStoreRefs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "$ref": "#/definitions/storeKind"
+                    },
+                    "labelSelector": {
+                      "type": "object"
+                    }
+                  }
+                }
+              },
+              "selector": {
+                "type": "object"
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
               }
             }
-          },
-          "selector": {"type": "object"},
-          "data": {"type": "array", "items": {"type": "object"}}
+          }
+        }
+      }
+    },
+    "serviceAccounts": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/feature"
+        }
+      ],
+      "properties": {
+        "items": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "namespace": {
+                "type": "string"
+              },
+              "labels": {
+                "$ref": "#/definitions/stringMap"
+              },
+              "annotations": {
+                "$ref": "#/definitions/stringMap"
+              },
+              "roleArn": {
+                "$ref": "#/definitions/roleArn"
+              }
+            }
+          }
+        }
+      }
+    },
+    "secretStores": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/feature"
+        }
+      ],
+      "properties": {
+        "items": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "namespace": {
+                "type": "string"
+              },
+              "labels": {
+                "$ref": "#/definitions/stringMap"
+              },
+              "annotations": {
+                "$ref": "#/definitions/stringMap"
+              },
+              "provider": {
+                "type": "object"
+              },
+              "extraSpec": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "clusterSecretStores": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/feature"
+        }
+      ],
+      "properties": {
+        "items": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "namespace": {
+                "type": "string"
+              },
+              "labels": {
+                "$ref": "#/definitions/stringMap"
+              },
+              "annotations": {
+                "$ref": "#/definitions/stringMap"
+              },
+              "provider": {
+                "type": "object"
+              },
+              "extraSpec": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "clusterExternalSecrets": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/feature"
+        }
+      ],
+      "properties": {
+        "items": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "labels": {
+                "$ref": "#/definitions/stringMap"
+              },
+              "annotations": {
+                "$ref": "#/definitions/stringMap"
+              },
+              "externalSecretName": {
+                "type": "string"
+              },
+              "externalSecretSpec": {
+                "type": "object",
+                "properties": {
+                  "secretStoreRef": {
+                    "$ref": "#/definitions/storeRef"
+                  }
+                }
+              },
+              "namespaceSelectors": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "namespaces": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "refreshTime": {
+                "$ref": "#/definitions/duration"
+              }
+            }
+          }
         }
       }
     }
   },
   "definitions": {
+    "feature": {
+      "description": "A feature block: off unless enabled, entries under items.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "object"
+        }
+      }
+    },
     "stringMap": {
       "type": "object",
-      "additionalProperties": {"type": "string"}
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "duration": {
       "description": "Go duration string such as 1h or 30m; 0 disables refresh.",
-      "type": ["string", "integer"]
+      "type": [
+        "string",
+        "integer"
+      ]
     },
-    "storeKind": {"enum": ["SecretStore", "ClusterSecretStore"]},
+    "roleArn": {
+      "description": "IAM role ARN for IRSA, or a Helm template that renders one.",
+      "type": "string",
+      "pattern": "^(|arn:aws[a-z-]*:iam::[0-9]{12}:role/.+|.*\\{\\{.*)$"
+    },
+    "source": {
+      "description": "AWS service to read from, through the aws block's store for it.",
+      "enum": [
+        "secretsManager",
+        "parameterStore"
+      ]
+    },
+    "awsService": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "storeName": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "storeKind": {
+      "enum": [
+        "SecretStore",
+        "ClusterSecretStore"
+      ]
+    },
     "storeRef": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "name": {"type": "string"},
-        "kind": {"$ref": "#/definitions/storeKind"}
-      }
-    },
-    "storeMap": {
-      "type": "object",
-      "additionalProperties": {
-        "type": ["object", "null"],
-        "additionalProperties": false,
-        "properties": {
-          "enabled": {"type": "boolean"},
-          "namespace": {"type": "string"},
-          "labels": {"$ref": "#/definitions/stringMap"},
-          "annotations": {"$ref": "#/definitions/stringMap"},
-          "provider": {"type": "object"},
-          "extraSpec": {"type": "object"}
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/storeKind"
         }
       }
     }

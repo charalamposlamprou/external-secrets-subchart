@@ -4,7 +4,7 @@ variable "cluster_name" {
 }
 
 variable "app" {
-  description = "App name. Used for the role name and, by default, the secret path prefix."
+  description = "App name. Used for the role name and the default secret/parameter prefixes."
   type        = string
 }
 
@@ -14,9 +14,15 @@ variable "namespace" {
 }
 
 variable "service_account" {
-  description = "Rendered ServiceAccount name, including any namePrefix (default: <app>-secrets)."
+  description = "Rendered ServiceAccount name (default: <app>-secrets, the chart's default when the release is named <app>)."
   type        = string
   default     = null
+}
+
+variable "secrets_manager" {
+  description = "Allow reading Secrets Manager secrets (matches aws.secretsManager.enabled)."
+  type        = bool
+  default     = true
 }
 
 variable "secret_name_prefixes" {
@@ -25,8 +31,26 @@ variable "secret_name_prefixes" {
   default     = null
 }
 
+variable "parameter_store" {
+  description = "Allow reading SSM Parameter Store parameters (matches aws.parameterStore.enabled)."
+  type        = bool
+  default     = false
+}
+
+variable "parameter_path_prefixes" {
+  description = "Parameter Store paths the app may read, with leading slash (default: [\"/<app>/\"])."
+  type        = list(string)
+  default     = null
+}
+
+variable "allow_find" {
+  description = "Allow dataFrom.find (secretsmanager:ListSecrets / ssm:DescribeParameters, which can't be scoped to a prefix)."
+  type        = bool
+  default     = false
+}
+
 variable "kms_key_arns" {
-  description = "Customer-managed KMS keys encrypting those secrets. Leave empty for the AWS-managed key."
+  description = "Customer-managed KMS keys encrypting the secrets or SecureString parameters. Leave empty for AWS-managed keys."
   type        = list(string)
   default     = []
 }

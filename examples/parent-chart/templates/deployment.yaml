@@ -13,6 +13,8 @@ spec:
         - name: app
           image: {{ .Values.image }}
           envFrom:
-            # Secret created by the ExternalSecret "my-app-env" in the subchart
+            # Secrets created by the ExternalSecrets in the subchart
             - secretRef:
                 name: my-app-env
+            - secretRef:
+                name: my-app-config
