@@ -61,14 +61,19 @@ Usage: include "eso-sub.featureItems" (dict "root" $ "feature" "externalSecrets"
 {{/*
 AWS setup as YAML when secretsManager and/or parameterStore is enabled, else empty:
   serviceAccountName: rendered IRSA account name (no namePrefix)
-  stores: {secretsManager: aws-secrets-manager, parameterStore: aws-parameter-store} for the enabled ones
+  stores: {secretsManager: <release>-secrets-manager, parameterStore: <release>-parameter-store}
+          for the enabled ones; exact rendered names (no namePrefix), unique per release
   defaultStore: store key used by externalSecrets items without secretStoreRef/source
 Usage: include "eso-sub.aws" $ | fromYaml
 */}}
 {{- define "eso-sub.aws" -}}
 {{- $stores := dict -}}
-{{- if (.Values.secretsManager | default dict).enabled -}}{{- $_ := set $stores "secretsManager" "aws-secrets-manager" -}}{{- end -}}
-{{- if (.Values.parameterStore | default dict).enabled -}}{{- $_ := set $stores "parameterStore" "aws-parameter-store" -}}{{- end -}}
+{{- if (.Values.secretsManager | default dict).enabled -}}
+{{- $_ := set $stores "secretsManager" (printf "%s-secrets-manager" .Release.Name | trunc 63 | trimSuffix "-") -}}
+{{- end -}}
+{{- if (.Values.parameterStore | default dict).enabled -}}
+{{- $_ := set $stores "parameterStore" (printf "%s-parameter-store" .Release.Name | trunc 63 | trimSuffix "-") -}}
+{{- end -}}
 {{- if $stores -}}
 {{- $a := .Values.aws | default dict -}}
 {{- $using := keys $stores | sortAlpha | join " and " -}}
@@ -89,7 +94,8 @@ Usage: include "eso-sub.aws" $ | fromYaml
 ExternalSecret items generated from a simple block (parameterStore or secretsManager).
 Each entry of `<block>.secrets` is one Kubernetes Secret; its keys are Secret keys mapped to
 a parameter/secret name (string) or {key, property, version}. Reserved entry keys:
-enabled, refreshInterval, and fromPath (parameterStore) / fromSecret (secretsManager).
+enabled, refreshInterval, type, template, and fromPath (parameterStore) / fromSecret
+(secretsManager). `template` adds ESO-templated keys and keeps the fetched ones (mergePolicy Merge).
 Usage: include "eso-sub.simpleItems" (dict "root" $ "block" "parameterStore") | fromYaml
 */}}
 {{- define "eso-sub.simpleItems" -}}
@@ -98,7 +104,7 @@ Usage: include "eso-sub.simpleItems" (dict "root" $ "block" "parameterStore") | 
 {{- $items := dict -}}
 {{- if $b.enabled -}}
 {{- $fromKey := ternary "fromPath" "fromSecret" (eq $block "parameterStore") -}}
-{{- $reserved := list "enabled" "refreshInterval" $fromKey -}}
+{{- $reserved := list "enabled" "refreshInterval" "type" "template" $fromKey -}}
 {{- range $name, $e := ($b.secrets | default dict) -}}
 {{- if not (kindIs "invalid" $e) -}}
 {{- $desc := printf "%s.secrets.%s" $block $name -}}
@@ -123,14 +129,31 @@ Usage: include "eso-sub.simpleItems" (dict "root" $ "block" "parameterStore") | 
 {{- if eq $block "parameterStore" -}}
 {{- /* Every parameter under the path; keys lose the path prefix, deeper "/" become "_". */ -}}
 {{- $path := printf "/%s" (trimAll "/" .) -}}
+{{- $prefix := ternary "/" (printf "%s/" $path) (eq $path "/") -}}
 {{- $find := dict "path" $path "name" (dict "regexp" ".*") -}}
 {{- $rewrite := list
-  (dict "regexp" (dict "source" (printf "^%s/" (regexQuoteMeta $path)) "target" ""))
+  (dict "regexp" (dict "source" (printf "^%s" (regexQuoteMeta $prefix)) "target" ""))
   (dict "regexp" (dict "source" "/" "target" "_")) -}}
 {{- $_ := set $item "dataFrom" (list (dict "find" $find "rewrite" $rewrite)) -}}
 {{- else -}}
 {{- $_ := set $item "dataFrom" (list (dict "extract" (dict "key" .))) -}}
 {{- end -}}
+{{- end -}}
+{{- if or $e.type $e.template -}}
+{{- $tpl := dict "mergePolicy" "Merge" -}}
+{{- with $e.type -}}
+{{- if not (kindIs "string" .) -}}
+{{- fail (printf "external-secrets-subchart: %s.type must be a Secret type string such as kubernetes.io/dockerconfigjson" $desc) -}}
+{{- end -}}
+{{- $_ := set $tpl "type" . -}}
+{{- end -}}
+{{- with $e.template -}}
+{{- if not (kindIs "map" .) -}}
+{{- fail (printf "external-secrets-subchart: %s.template must be a map of KEY: ESO template string" $desc) -}}
+{{- end -}}
+{{- $_ := set $tpl "data" . -}}
+{{- end -}}
+{{- $_ := set $item "target" (dict "template" $tpl) -}}
 {{- end -}}
 {{- if not (or $item.data $item.dataFrom) -}}
 {{- fail (printf "external-secrets-subchart: %s has no keys; add SECRET_KEY: name entries or %s" $desc $fromKey) -}}
@@ -171,7 +194,8 @@ Usage: include "eso-sub.externalSecretItems" $ | fromYaml
 
 {{/*
 Namespaced SecretStores to render: secretStores.items (if enabled) plus one store per enabled
-aws service, all authenticating as the aws ServiceAccount.
+aws service, all authenticating as the aws ServiceAccount. The aws stores carry `fullName`,
+their exact rendered name.
 Usage: include "eso-sub.secretStoreItems" $ | fromYaml
 */}}
 {{- define "eso-sub.secretStoreItems" -}}
@@ -184,7 +208,7 @@ Usage: include "eso-sub.secretStoreItems" $ | fromYaml
 {{- end -}}
 {{- $service := ternary "SecretsManager" "ParameterStore" (eq $source "secretsManager") -}}
 {{- $aws := dict "service" $service "region" $.Values.aws.region "auth" (deepCopy $auth) -}}
-{{- $_ := set $items $storeName (dict "provider" (dict "aws" $aws)) -}}
+{{- $_ := set $items $storeName (dict "provider" (dict "aws" $aws) "fullName" $storeName) -}}
 {{- end -}}
 {{- end -}}
 {{- toYaml $items -}}
@@ -260,7 +284,7 @@ Usage: include "eso-sub.storeRef" (dict "root" $ "ref" $item.secretStoreRef "sou
 {{- $isCluster := eq $kind "ClusterSecretStore" -}}
 {{- $local := ternary (include "eso-sub.featureItems" (dict "root" .root "feature" "clusterSecretStores")) (include "eso-sub.secretStoreItems" .root) $isCluster | fromYaml -}}
 {{- if hasKey $local $name -}}
-{{- $name = include "eso-sub.name" (dict "root" .root "name" $name) -}}
+{{- $name = dig "fullName" "" (get $local $name | default dict) | default (include "eso-sub.name" (dict "root" .root "name" $name)) -}}
 {{- else -}}
 {{- include "eso-sub.requireFeature" (dict "root" .root "feature" (ternary "clusterSecretStores" "secretStores" $isCluster) "name" $name "desc" .item) -}}
 {{- end -}}

@@ -42,8 +42,10 @@ aws:
   serviceAccountName: ""       # default "<release name>-secrets"
   serviceAccountAnnotations: {}
 
-# -- SSM Parameter Store. Each entry under `secrets` becomes one Kubernetes Secret:
-# list SECRET_KEY: /parameter/name pairs, and/or `fromPath` to take every parameter under a path.
+# -- SSM Parameter Store. Renders SecretStore "<release>-parameter-store". Each entry under
+# `secrets` becomes one Kubernetes Secret: list SECRET_KEY: /parameter/name pairs, and/or
+# `fromPath` to take every parameter under a path. Reserved entry keys: enabled,
+# refreshInterval, type, template, fromPath.
 parameterStore:
   enabled: false
   # refreshInterval: 1h        # for all entries; defaults.refreshInterval otherwise
@@ -54,10 +56,16 @@ parameterStore:
 #    my-app-flags:
 #      fromPath: /my-app/flags/  # /my-app/flags/FEATURE_X -> key FEATURE_X (deeper "/" -> "_")
 #      refreshInterval: 5m
+#    my-app-db:
+#      DB_HOST: /my-app/db/host
+#      DB_PASS: /my-app/db/password
+#      template:                 # extra keys from ESO templates; fetched keys are kept
+#        DATABASE_URL: "postgres://app:{{ .DB_PASS }}@{{ .DB_HOST }}:5432/app"
 
-# -- AWS Secrets Manager. Each entry under `secrets` becomes one Kubernetes Secret:
-# list SECRET_KEY: secret-name pairs ({key, property} for a JSON field), and/or `fromSecret`
-# to take every JSON field of one secret.
+# -- AWS Secrets Manager. Renders SecretStore "<release>-secrets-manager". Each entry under
+# `secrets` becomes one Kubernetes Secret: list SECRET_KEY: secret-name pairs ({key, property}
+# for a JSON field), and/or `fromSecret` to take every JSON field of one secret. Reserved
+# entry keys: enabled, refreshInterval, type, template, fromSecret.
 secretsManager:
   enabled: false
   # refreshInterval: 1h
@@ -68,6 +76,9 @@ secretsManager:
 #      DB_USER: {key: my-app/db, property: username}
 #      DB_PASS: {key: my-app/db, property: password}
 #      API_TOKEN: my-app/api-token   # plain-text secret
+#    registry-creds:
+#      type: kubernetes.io/dockerconfigjson   # Kubernetes Secret type
+#      .dockerconfigjson: my-app/registry-auth
 
 # ---------------------------------------------------------------------------------------
 # Advanced: full ESO resources. Use these when the blocks above aren't enough

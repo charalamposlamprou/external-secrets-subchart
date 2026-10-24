@@ -99,6 +99,18 @@
                 "type": "string",
                 "minLength": 1,
                 "description": "Take every parameter under this path."
+              },
+              "type": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Kubernetes Secret type, e.g. kubernetes.io/dockerconfigjson."
+              },
+              "template": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Extra keys built with ESO templates from the fetched keys (kept alongside them)."
               }
             },
             "patternProperties": {
@@ -111,7 +123,11 @@
                     "type": "integer"
                   },
                   {
-                    "$ref": "#/definitions/remoteName"
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "object"
                   }
                 ]
               }
@@ -150,6 +166,18 @@
                 "type": "string",
                 "minLength": 1,
                 "description": "Take every JSON field of this secret."
+              },
+              "type": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Kubernetes Secret type, e.g. kubernetes.io/dockerconfigjson."
+              },
+              "template": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Extra keys built with ESO templates from the fetched keys (kept alongside them)."
               }
             },
             "patternProperties": {
@@ -162,7 +190,11 @@
                     "type": "integer"
                   },
                   {
-                    "$ref": "#/definitions/remoteName"
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "object"
                   }
                 ]
               }

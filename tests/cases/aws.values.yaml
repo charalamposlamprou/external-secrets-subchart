@@ -21,6 +21,8 @@ parameterStore:
       enabled: false
       X: /ci/x
     removed: null
+    everything:
+      fromPath: /                   # root: strip only the leading "/"
 secretsManager:
   enabled: true
   secrets:
@@ -30,6 +32,11 @@ secretsManager:
       DB_USER: {key: ci/db, property: username}
       DB_PASS: {key: ci/db, property: password, version: AWSCURRENT}
       API_TOKEN: ci/api-token
+      template:                     # extra key built from the fetched ones (mergePolicy Merge)
+        DATABASE_URL: "postgres://{{ .DB_USER }}:{{ .DB_PASS }}@db:5432/app"
+    registry:
+      type: kubernetes.io/dockerconfigjson
+      .dockerconfigjson: ci/registry-auth
 externalSecrets:                    # advanced items still mix in, choosing a store by source
   enabled: true
   items:

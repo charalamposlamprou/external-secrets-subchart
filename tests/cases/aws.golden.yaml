@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.4.0
+    helm.sh/chart: external-secrets-subchart-0.5.0
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/ci-secrets
     owner: platform
@@ -29,11 +29,11 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.4.0
+    helm.sh/chart: external-secrets-subchart-0.5.0
 spec:
   refreshInterval: "10m"
   secretStoreRef:
-    name: ci-aws-parameter-store
+    name: ci-parameter-store
     kind: SecretStore
   target:
     creationPolicy: Owner
@@ -59,11 +59,11 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.4.0
+    helm.sh/chart: external-secrets-subchart-0.5.0
 spec:
   refreshInterval: "1h"
   secretStoreRef:
-    name: ci-aws-secrets-manager
+    name: ci-secrets-manager
     kind: SecretStore
   target:
     creationPolicy: Owner
@@ -85,11 +85,11 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.4.0
+    helm.sh/chart: external-secrets-subchart-0.5.0
 spec:
   refreshInterval: "0"
   secretStoreRef:
-    name: ci-aws-parameter-store
+    name: ci-parameter-store
     kind: SecretStore
   target:
     creationPolicy: Owner
@@ -120,16 +120,20 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.4.0
+    helm.sh/chart: external-secrets-subchart-0.5.0
 spec:
   refreshInterval: "1h"
   secretStoreRef:
-    name: ci-aws-secrets-manager
+    name: ci-secrets-manager
     kind: SecretStore
   target:
     creationPolicy: Owner
     deletionPolicy: Retain
     name: ci-db-credentials
+    template:
+      data:
+        DATABASE_URL: postgres://{{ .DB_USER }}:{{ .DB_PASS }}@db:5432/app
+      mergePolicy: Merge
   data:
     - remoteRef:
         key: ci/api-token
@@ -148,6 +152,41 @@ spec:
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
+  name: ci-everything
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.5.0
+spec:
+  refreshInterval: "10m"
+  secretStoreRef:
+    name: ci-parameter-store
+    kind: SecretStore
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    name: ci-everything
+  dataFrom:
+    - find:
+        name:
+          regexp: .*
+        path: /
+      rewrite:
+      - regexp:
+          source: ^/
+          target: ""
+      - regexp:
+          source: /
+          target: _
+---
+# Source: external-secrets-subchart/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
   name: ci-from-default
   namespace: default
   labels:
@@ -156,11 +195,11 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.4.0
+    helm.sh/chart: external-secrets-subchart-0.5.0
 spec:
   refreshInterval: "1h"
   secretStoreRef:
-    name: ci-aws-secrets-manager
+    name: ci-secrets-manager
     kind: SecretStore
   target:
     creationPolicy: Owner
@@ -182,11 +221,11 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.4.0
+    helm.sh/chart: external-secrets-subchart-0.5.0
 spec:
   refreshInterval: "10m"
   secretStoreRef:
-    name: ci-aws-parameter-store
+    name: ci-parameter-store
     kind: SecretStore
   target:
     creationPolicy: Owner
@@ -213,6 +252,36 @@ spec:
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
+  name: ci-registry
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.5.0
+spec:
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: ci-secrets-manager
+    kind: SecretStore
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    name: ci-registry
+    template:
+      mergePolicy: Merge
+      type: kubernetes.io/dockerconfigjson
+  data:
+    - remoteRef:
+        key: ci/registry-auth
+      secretKey: .dockerconfigjson
+---
+# Source: external-secrets-subchart/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
   name: ci-templated
   namespace: default
   labels:
@@ -221,11 +290,11 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.4.0
+    helm.sh/chart: external-secrets-subchart-0.5.0
 spec:
   refreshInterval: "1h"
   secretStoreRef:
-    name: ci-aws-parameter-store
+    name: ci-parameter-store
     kind: SecretStore
   target:
     creationPolicy: Owner
@@ -251,11 +320,11 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.4.0
+    helm.sh/chart: external-secrets-subchart-0.5.0
 spec:
   refreshInterval: "1h"
   secretStoreRefs:
-    - name: ci-aws-secrets-manager
+    - name: ci-secrets-manager
       kind: SecretStore
   selector:
     secret:
@@ -270,7 +339,7 @@ spec:
 apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
-  name: ci-aws-parameter-store
+  name: ci-parameter-store
   namespace: default
   labels:
     app.kubernetes.io/component: external-secrets
@@ -278,7 +347,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.4.0
+    helm.sh/chart: external-secrets-subchart-0.5.0
 spec:
   provider:
     aws:
@@ -293,7 +362,7 @@ spec:
 apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
-  name: ci-aws-secrets-manager
+  name: ci-secrets-manager
   namespace: default
   labels:
     app.kubernetes.io/component: external-secrets
@@ -301,7 +370,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.4.0
+    helm.sh/chart: external-secrets-subchart-0.5.0
 spec:
   provider:
     aws:

@@ -54,3 +54,21 @@ variable "kms_key_arns" {
   type        = list(string)
   default     = []
 }
+
+variable "role_name" {
+  description = "IAM role name (default: <cluster_name>-<app>-secrets). Role names are unique per account, so include the cluster/environment."
+  type        = string
+  default     = null
+}
+
+variable "permissions_boundary" {
+  description = "ARN of an IAM permissions boundary to attach to the role, if your organisation requires one."
+  type        = string
+  default     = null
+}
+
+variable "tags" {
+  description = "Tags for the IAM role."
+  type        = map(string)
+  default     = {}
+}
