@@ -1,0 +1,95 @@
+---
+# Source: external-secrets-subchart/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: app-config
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.6.0
+spec:
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: ci-parameter-store
+    kind: SecretStore
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    name: app-config
+  data:
+    - remoteRef:
+        key: /my-app/log-level
+      secretKey: LOG_LEVEL
+---
+# Source: external-secrets-subchart/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: app-env
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.6.0
+spec:
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: ci-secrets-manager
+    kind: SecretStore
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    name: app-env
+  dataFrom:
+    - extract:
+        key: my-app/env
+---
+# Source: external-secrets-subchart/templates/secretstore.yaml
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: ci-parameter-store
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.6.0
+spec:
+  provider:
+    aws:
+      region: eu-west-1
+      role: arn:aws:iam::123456789012:role/dev-my-app-secrets
+      service: ParameterStore
+      sessionTagsPolicy: Simple
+---
+# Source: external-secrets-subchart/templates/secretstore.yaml
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: ci-secrets-manager
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.6.0
+spec:
+  provider:
+    aws:
+      region: eu-west-1
+      role: arn:aws:iam::123456789012:role/dev-my-app-secrets
+      service: SecretsManager
+      sessionTagsPolicy: Simple

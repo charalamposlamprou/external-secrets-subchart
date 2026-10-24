@@ -47,6 +47,10 @@ run "defaults_secrets_manager_only" {
     error_message = "trust policy must allow only the chart's ServiceAccount"
   }
   assert {
+    condition     = [for st in jsondecode(data.aws_iam_policy_document.trust.json).Statement : st.Sid] == ["IRSA"]
+    error_message = "default trust is IRSA only"
+  }
+  assert {
     condition     = jsondecode(data.aws_iam_policy_document.trust.json).Statement[0].Principal.Federated == "arn:aws:iam::123456789012:oidc-provider/oidc.eks.eu-west-1.amazonaws.com/id/EXAMPLE"
     error_message = "trust policy must name the cluster's OIDC provider"
   }
@@ -118,4 +122,60 @@ run "rejects_long_role_name" {
     cluster_name = "a-very-long-cluster-name-for-production-workloads-eu" # 67 chars with suffix
   }
   expect_failures = [aws_iam_role.this]
+}
+
+run "pod_identity_trust" {
+  command = plan
+
+  variables {
+    trust                   = ["pod_identity"]
+    eso_controller_role_arn = "arn:aws:iam::123456789012:role/dev-external-secrets"
+  }
+
+  assert {
+    condition     = [for st in jsondecode(data.aws_iam_policy_document.trust.json).Statement : st.Sid] == ["PodIdentityViaESO"]
+    error_message = "pod_identity alone must not keep the IRSA statement"
+  }
+  assert {
+    condition     = jsondecode(data.aws_iam_policy_document.trust.json).Statement[0].Principal.AWS == "arn:aws:iam::123456789012:role/dev-external-secrets"
+    error_message = "only the ESO controller role may assume the app role"
+  }
+  assert {
+    condition     = toset(jsondecode(data.aws_iam_policy_document.trust.json).Statement[0].Action) == toset(["sts:AssumeRole", "sts:TagSession"])
+    error_message = "ESO's session tags need sts:TagSession"
+  }
+  assert {
+    condition     = jsondecode(data.aws_iam_policy_document.trust.json).Statement[0].Condition.StringEquals["aws:RequestTag/esoNamespace"] == "my-app"
+    error_message = "trust must be limited to ExternalSecrets in the app's namespace"
+  }
+}
+
+run "migration_trusts_both" {
+  command = plan
+
+  variables {
+    trust                   = ["irsa", "pod_identity"]
+    eso_controller_role_arn = "arn:aws:iam::123456789012:role/dev-external-secrets"
+  }
+
+  assert {
+    condition     = [for st in jsondecode(data.aws_iam_policy_document.trust.json).Statement : st.Sid] == ["IRSA", "PodIdentityViaESO"]
+    error_message = "both statements expected while migrating"
+  }
+}
+
+run "rejects_pod_identity_without_controller_role" {
+  command = plan
+  variables {
+    trust = ["pod_identity"]
+  }
+  expect_failures = [aws_iam_role.this]
+}
+
+run "rejects_unknown_trust" {
+  command = plan
+  variables {
+    trust = ["oidc"]
+  }
+  expect_failures = [var.trust]
 }

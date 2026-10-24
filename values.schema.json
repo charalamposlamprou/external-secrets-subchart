@@ -62,6 +62,14 @@
         "region": {
           "type": "string"
         },
+        "auth": {
+          "description": "How ESO gets the app role: irsa (per-app ServiceAccount, default) or podIdentity (ESO controller's Pod Identity + AssumeRole with session tags; ESO >= 2.5.0).",
+          "enum": [
+            "",
+            "irsa",
+            "podIdentity"
+          ]
+        },
         "serviceAccountName": {
           "type": "string"
         },

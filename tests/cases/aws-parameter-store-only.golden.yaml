@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.5.2
+    helm.sh/chart: external-secrets-subchart-0.6.0
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/ci-params
 automountServiceAccountToken: false
@@ -28,7 +28,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.5.2
+    helm.sh/chart: external-secrets-subchart-0.6.0
 spec:
   refreshInterval: "1h"
   secretStoreRef:
@@ -63,7 +63,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.5.2
+    helm.sh/chart: external-secrets-subchart-0.6.0
 spec:
   refreshInterval: "1h"
   secretStoreRef:
@@ -89,7 +89,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.5.2
+    helm.sh/chart: external-secrets-subchart-0.6.0
 spec:
   provider:
     aws:

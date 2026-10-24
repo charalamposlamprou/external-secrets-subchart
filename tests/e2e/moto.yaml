@@ -16,6 +16,9 @@ spec:
         - name: moto
           image: motoserver/moto:5.2.4
           ports: [{containerPort: 5000}]
+          env:
+            - name: MOTO_ENABLE_RECORDING   # lets tests/e2e.sh inspect the STS calls ESO made
+              value: "True"
           readinessProbe:
             httpGet: {path: /moto-api/, port: 5000}
 ---

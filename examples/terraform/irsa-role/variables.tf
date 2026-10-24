@@ -72,3 +72,20 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "trust" {
+  description = "Who may assume the role, matching the chart's aws.auth: [\"irsa\"] (default), [\"pod_identity\"], or both while migrating."
+  type        = list(string)
+  default     = ["irsa"]
+
+  validation {
+    condition     = length(var.trust) > 0 && alltrue([for t in var.trust : contains(["irsa", "pod_identity"], t)])
+    error_message = "trust must be a non-empty list of \"irsa\" and/or \"pod_identity\"."
+  }
+}
+
+variable "eso_controller_role_arn" {
+  description = "For trust = pod_identity: the ESO controller's Pod Identity role (the eso-pod-identity module's role_arn)."
+  type        = string
+  default     = null
+}

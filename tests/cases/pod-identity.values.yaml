@@ -1,0 +1,17 @@
+# min-eso: v2.5.0   (sessionTagsPolicy; tests/validate-crds.sh skips this fixture on older ESO)
+# aws.auth: podIdentity: no per-app ServiceAccount; the stores assume the app role with session
+# tags, using the ESO controller's EKS Pod Identity credentials.
+aws:
+  auth: podIdentity
+  roleArn: arn:aws:iam::123456789012:role/dev-my-app-secrets
+  region: eu-west-1
+parameterStore:
+  enabled: true
+  secrets:
+    app-config:
+      LOG_LEVEL: /my-app/log-level
+secretsManager:
+  enabled: true
+  secrets:
+    app-env:
+      fromSecret: my-app/env

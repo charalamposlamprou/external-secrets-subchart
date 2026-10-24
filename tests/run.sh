@@ -72,6 +72,9 @@ schema: invalid store kind|kind|--set defaults.secretStoreRef.kind=Store
 schema: typo in item key|datafrom|--set externalSecrets.enabled=true --set externalSecrets.items.e.datafrom[0].extract.key=k
 schema: simple entry type not a string|type|--set aws.roleArn=arn:aws:iam::123456789012:role/r --set aws.region=eu-west-1 --set parameterStore.enabled=true --set parameterStore.secrets.s.X=/x --set parameterStore.secrets.s.type=1
 schema: simple entry template not a map|template|--set aws.roleArn=arn:aws:iam::123456789012:role/r --set aws.region=eu-west-1 --set parameterStore.enabled=true --set parameterStore.secrets.s.X=/x --set parameterStore.secrets.s.template=oops
+podIdentity with serviceAccountName|only apply to aws.auth: irsa|--set aws.roleArn=arn:aws:iam::123456789012:role/r --set aws.region=eu-west-1 --set parameterStore.enabled=true --set parameterStore.secrets.s.X=/x --set aws.auth=podIdentity --set aws.serviceAccountName=x
+podIdentity with serviceAccountAnnotations|only apply to aws.auth: irsa|--set aws.roleArn=arn:aws:iam::123456789012:role/r --set aws.region=eu-west-1 --set parameterStore.enabled=true --set parameterStore.secrets.s.X=/x --set aws.auth=podIdentity --set aws.serviceAccountAnnotations.a=b
+schema: unknown aws.auth|auth|--set aws.roleArn=arn:aws:iam::123456789012:role/r --set aws.region=eu-west-1 --set parameterStore.enabled=true --set parameterStore.secrets.s.X=/x --set aws.auth=oidc
 schema: old 0.3 aws.enabled|enabled|--set aws.enabled=true
 schema: invalid Secret key|parameterStore|--set parameterStore.secrets.s.BAD/KEY=/x
 schema: unknown source|source|--set externalSecrets.enabled=true --set externalSecrets.items.e.source=ssm
