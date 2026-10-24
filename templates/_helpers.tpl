@@ -98,3 +98,41 @@ Usage: include "eso-sub.refreshInterval" (dict "root" $ "item" $es)
 {{- .root.Values.defaults.refreshInterval | toString | quote -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+AWS provider auth: require an IAM role. Rejects static access keys (auth.secretRef).
+When auth.jwt.serviceAccountRef names a ServiceAccount from this chart, that account
+must set roleArn; its name gets namePrefix and, for ClusterSecretStores, its namespace.
+Mutates .provider (pass a deepCopy). Renders nothing.
+Usage: include "eso-sub.awsAuth" (dict "root" $ "provider" $p "kind" $kind "store" $s "desc" $desc)
+*/}}
+{{- define "eso-sub.awsAuth" -}}
+{{- $aws := .provider.aws -}}
+{{- if kindIs "map" $aws -}}
+{{- $auth := $aws.auth | default dict -}}
+{{- if $auth.secretRef -}}
+{{- fail (printf "external-secrets-subchart: %s uses static AWS access keys (auth.secretRef). Use an IAM role: auth.jwt.serviceAccountRef with an IRSA ServiceAccount, or omit auth to use the ESO controller's role" .desc) -}}
+{{- end -}}
+{{- $saName := dig "jwt" "serviceAccountRef" "name" "" $auth -}}
+{{- $accounts := .root.Values.serviceAccounts | default dict -}}
+{{- if and $saName (hasKey $accounts $saName) -}}
+{{- $sa := get $accounts $saName -}}
+{{- if not (include "eso-sub.enabled" (dict "item" $sa "desc" (printf "ServiceAccount %q" $saName))) -}}
+{{- fail (printf "external-secrets-subchart: %s uses ServiceAccount %q, which is disabled or removed" .desc $saName) -}}
+{{- end -}}
+{{- if not $sa.roleArn -}}
+{{- fail (printf "external-secrets-subchart: %s uses ServiceAccount %q, which has no roleArn" .desc $saName) -}}
+{{- end -}}
+{{- $ref := $auth.jwt.serviceAccountRef -}}
+{{- $saNamespace := $sa.namespace | default .root.Release.Namespace -}}
+{{- if eq .kind "SecretStore" -}}
+{{- if ne $saNamespace (.store.namespace | default .root.Release.Namespace) -}}
+{{- fail (printf "external-secrets-subchart: %s and its ServiceAccount %q must be in the same namespace" .desc $saName) -}}
+{{- end -}}
+{{- else if not $ref.namespace -}}
+{{- $_ := set $ref "namespace" $saNamespace -}}
+{{- end -}}
+{{- $_ := set $ref "name" (include "eso-sub.name" (dict "root" .root "name" $saName)) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

@@ -30,6 +30,24 @@
         "target": {"type": "object"}
       }
     },
+    "serviceAccounts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["object", "null"],
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {"type": "boolean"},
+          "namespace": {"type": "string"},
+          "labels": {"$ref": "#/definitions/stringMap"},
+          "annotations": {"$ref": "#/definitions/stringMap"},
+          "roleArn": {
+            "description": "IAM role ARN for IRSA, or a Helm template that renders one.",
+            "type": "string",
+            "pattern": "^(arn:aws[a-z-]*:iam::[0-9]{12}:role/.+|.*\\{\\{.*)$"
+          }
+        }
+      }
+    },
     "secretStores": {"$ref": "#/definitions/storeMap"},
     "clusterSecretStores": {"$ref": "#/definitions/storeMap"},
     "externalSecrets": {

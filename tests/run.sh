@@ -53,6 +53,11 @@ schema: typo in item key|datafrom|--set externalSecrets.e.datafrom[0].extract.ke
 schema: unknown top-level key|externalSecret|--set externalSecret.e.data=null
 schema: non-string label value|commonLabels|--set commonLabels.tier=1
 schema: item not a map|externalSecrets|--set externalSecrets.e=oops
+AWS static access keys|uses static AWS access keys|--set secretStores.s.provider.aws.region=eu-west-1 --set secretStores.s.provider.aws.auth.secretRef.accessKeyIDSecretRef.name=k
+AWS store, SA without roleArn|which has no roleArn|--set secretStores.s.provider.aws.region=eu-west-1 --set secretStores.s.provider.aws.auth.jwt.serviceAccountRef.name=sa --set serviceAccounts.sa.labels.a=b
+AWS store, disabled SA|which is disabled or removed|--set secretStores.s.provider.aws.region=eu-west-1 --set secretStores.s.provider.aws.auth.jwt.serviceAccountRef.name=sa --set serviceAccounts.sa.enabled=false
+AWS store, SA in other namespace|must be in the same namespace|--set secretStores.s.provider.aws.region=eu-west-1 --set secretStores.s.provider.aws.auth.jwt.serviceAccountRef.name=sa --set serviceAccounts.sa.roleArn=arn:aws:iam::123456789012:role/r --set serviceAccounts.sa.namespace=other
+schema: malformed roleArn|roleArn|--set serviceAccounts.sa.roleArn=my-role
 CASES
 
 exit "$failed"
