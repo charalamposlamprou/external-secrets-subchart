@@ -1,0 +1,14 @@
+name: lint
+on: [push, pull_request]
+jobs:
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm lint . --strict
+      - run: helm lint . --strict -f ci/full-values.yaml
+      - run: helm template ci . -f ci/full-values.yaml
+      - name: Parent chart example
+        working-directory: examples/parent-chart
+        run: helm dependency update && helm template my-app .

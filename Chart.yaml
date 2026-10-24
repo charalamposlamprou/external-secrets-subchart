@@ -1,0 +1,16 @@
+apiVersion: v2
+name: external-secrets-subchart
+description: >-
+  Helm subchart that renders External Secrets Operator resources
+  (SecretStore, ClusterSecretStore, ExternalSecret, ClusterExternalSecret, PushSecret)
+  from values, for use as a dependency of an existing application chart.
+type: application
+version: 0.1.0
+appVersion: "v1"
+keywords:
+  - external-secrets
+  - eso
+  - secrets
+  - subchart
+annotations:
+  external-secrets.io/min-operator-version: "0.17.0"

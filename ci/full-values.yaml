@@ -1,0 +1,65 @@
+namePrefix: "{{ .Release.Name }}-"
+commonLabels:
+  team: platform
+defaults:
+  secretStoreRef:
+    name: vault-backend
+secretStores:
+  vault-backend:
+    provider:
+      vault:
+        server: https://vault.example.com
+        path: secret
+        version: v2
+        auth:
+          kubernetes:
+            mountPath: kubernetes
+            role: "{{ .Release.Name }}"
+  disabled-store:
+    enabled: false
+    provider: {fake: {}}
+clusterSecretStores:
+  aws-global:
+    provider:
+      aws:
+        service: SecretsManager
+        region: eu-west-1
+externalSecrets:
+  db-credentials:
+    target:
+      template:
+        type: Opaque
+        data:
+          DATABASE_URL: "postgres://{{ .username }}:{{ .password }}@db:5432/app"
+    data:
+      - secretKey: username
+        remoteRef: {key: app/db, property: username}
+      - secretKey: password
+        remoteRef: {key: app/db, property: password}
+  aws-config:
+    secretStoreRef: {name: aws-global, kind: ClusterSecretStore}
+    refreshInterval: 15m
+    annotations: {argocd.argoproj.io/sync-wave: "-1"}
+    dataFrom:
+      - extract: {key: app/config}
+clusterExternalSecrets:
+  registry:
+    namespaceSelectors:
+      - matchLabels: {team: payments}
+    externalSecretSpec:
+      secretStoreRef: {name: aws-global, kind: ClusterSecretStore}
+      target:
+        name: registry-creds
+        template:
+          type: kubernetes.io/dockerconfigjson
+          data:
+            .dockerconfigjson: "{{ .config }}"
+      dataFrom:
+        - extract: {key: shared/registry}
+pushSecrets:
+  api-key:
+    selector: {secret: {name: api-key}}
+    data:
+      - match:
+          secretKey: key
+          remoteRef: {remoteKey: app/api-key, property: key}

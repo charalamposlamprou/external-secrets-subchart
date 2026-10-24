@@ -1,0 +1,111 @@
+# -- Master switch. When false the subchart renders nothing.
+enabled: true
+
+# -- API version of the External Secrets Operator CRDs.
+# Use "external-secrets.io/v1" for ESO >= 0.17, "external-secrets.io/v1beta1" for older operators.
+apiVersion: external-secrets.io/v1
+# -- API version used for PushSecret (still alpha in ESO).
+pushSecretApiVersion: external-secrets.io/v1alpha1
+
+# -- Optional prefix added to every generated resource name (e.g. "{{ .Release.Name }}-").
+# Rendered with tpl, so templates are allowed.
+namePrefix: ""
+
+# -- Labels added to every resource.
+commonLabels: {}
+# -- Annotations added to every resource.
+commonAnnotations: {}
+
+# -- Defaults applied to every ExternalSecret / PushSecret unless overridden per item.
+defaults:
+  refreshInterval: 1h
+  # Store used when an item does not set its own secretStoreRef.
+  secretStoreRef:
+    name: ""          # e.g. "vault-backend"; may be templated
+    kind: SecretStore # or ClusterSecretStore
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+
+# -- Namespaced SecretStores, keyed by name. `provider` is passed through verbatim.
+# Maps (not lists) are used so a parent chart can override a single entry.
+secretStores: {}
+#  vault-backend:
+#    enabled: true
+#    provider:
+#      vault:
+#        server: https://vault.example.com
+#        path: secret
+#        version: v2
+#        auth:
+#          kubernetes:
+#            mountPath: kubernetes
+#            role: my-app
+#            serviceAccountRef:
+#              name: my-app
+#    # Any other SecretStore spec fields (retrySettings, refreshInterval, conditions, ...)
+#    extraSpec: {}
+
+# -- Cluster-scoped ClusterSecretStores, keyed by name. Same shape as secretStores.
+clusterSecretStores: {}
+
+# -- ExternalSecrets, keyed by name.
+externalSecrets: {}
+#  db-credentials:
+#    enabled: true
+#    refreshInterval: 30m
+#    secretStoreRef:            # optional, falls back to defaults.secretStoreRef
+#      name: vault-backend
+#      kind: SecretStore
+#    target:
+#      name: db-credentials     # defaults to the ExternalSecret name
+#      creationPolicy: Owner
+#      template:
+#        type: Opaque
+#        data:
+#          DATABASE_URL: "postgres://{{ .username }}:{{ .password }}@db:5432/app"
+#    data:
+#      - secretKey: username
+#        remoteRef:
+#          key: app/db
+#          property: username
+#      - secretKey: password
+#        remoteRef:
+#          key: app/db
+#          property: password
+#    dataFrom:
+#      - extract:
+#          key: app/config
+#    labels: {}
+#    annotations: {}
+
+# -- ClusterExternalSecrets, keyed by name. `externalSecretSpec` is a full ExternalSecret spec.
+clusterExternalSecrets: {}
+#  shared-registry-creds:
+#    namespaceSelectors:
+#      - matchLabels:
+#          team: payments
+#    refreshTime: 1m
+#    externalSecretName: registry-creds
+#    externalSecretSpec:
+#      secretStoreRef: {name: vault-global, kind: ClusterSecretStore}
+#      target: {name: registry-creds}
+#      dataFrom:
+#        - extract: {key: shared/registry}
+
+# -- PushSecrets, keyed by name.
+pushSecrets: {}
+#  generated-api-key:
+#    refreshInterval: 1h
+#    secretStoreRefs:
+#      - name: vault-backend
+#        kind: SecretStore
+#    selector:
+#      secret:
+#        name: api-key
+#    data:
+#      - match:
+#          secretKey: key
+#          remoteRef:
+#            remoteKey: app/api-key
+#            property: key

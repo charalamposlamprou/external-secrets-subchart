@@ -1,0 +1,3 @@
+*.tgz
+examples/parent-chart/charts/
+examples/parent-chart/Chart.lock
