@@ -1,0 +1,139 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "external-secrets-subchart values",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "description": "Helm global values passed down by a parent chart.",
+      "type": "object"
+    },
+    "enabled": {"type": "boolean"},
+    "apiVersion": {"type": "string", "pattern": "^external-secrets\\.io/"},
+    "pushSecretApiVersion": {"type": "string", "pattern": "^external-secrets\\.io/"},
+    "namePrefix": {"type": "string"},
+    "commonLabels": {"$ref": "#/definitions/stringMap"},
+    "commonAnnotations": {"$ref": "#/definitions/stringMap"},
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "refreshInterval": {"$ref": "#/definitions/duration"},
+        "secretStoreRef": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {"type": "string"},
+            "kind": {"$ref": "#/definitions/storeKind"}
+          }
+        },
+        "target": {"type": "object"}
+      }
+    },
+    "secretStores": {"$ref": "#/definitions/storeMap"},
+    "clusterSecretStores": {"$ref": "#/definitions/storeMap"},
+    "externalSecrets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["object", "null"],
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {"type": "boolean"},
+          "namespace": {"type": "string"},
+          "labels": {"$ref": "#/definitions/stringMap"},
+          "annotations": {"$ref": "#/definitions/stringMap"},
+          "refreshInterval": {"$ref": "#/definitions/duration"},
+          "refreshPolicy": {"enum": ["CreatedOnce", "Periodic", "OnChange"]},
+          "secretStoreRef": {"$ref": "#/definitions/storeRef"},
+          "target": {"type": "object"},
+          "data": {"type": "array", "items": {"type": "object"}},
+          "dataFrom": {"type": "array", "items": {"type": "object"}}
+        }
+      }
+    },
+    "clusterExternalSecrets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["object", "null"],
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {"type": "boolean"},
+          "labels": {"$ref": "#/definitions/stringMap"},
+          "annotations": {"$ref": "#/definitions/stringMap"},
+          "externalSecretName": {"type": "string"},
+          "externalSecretSpec": {
+            "type": "object",
+            "properties": {"secretStoreRef": {"$ref": "#/definitions/storeRef"}}
+          },
+          "namespaceSelectors": {"type": "array", "items": {"type": "object"}},
+          "namespaces": {"type": "array", "items": {"type": "string"}},
+          "refreshTime": {"$ref": "#/definitions/duration"}
+        }
+      }
+    },
+    "pushSecrets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["object", "null"],
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {"type": "boolean"},
+          "namespace": {"type": "string"},
+          "labels": {"$ref": "#/definitions/stringMap"},
+          "annotations": {"$ref": "#/definitions/stringMap"},
+          "refreshInterval": {"$ref": "#/definitions/duration"},
+          "updatePolicy": {"enum": ["Replace", "IfNotExists"]},
+          "deletionPolicy": {"enum": ["Delete", "None"]},
+          "secretStoreRefs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {"type": "string"},
+                "kind": {"$ref": "#/definitions/storeKind"},
+                "labelSelector": {"type": "object"}
+              }
+            }
+          },
+          "selector": {"type": "object"},
+          "data": {"type": "array", "items": {"type": "object"}}
+        }
+      }
+    }
+  },
+  "definitions": {
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "duration": {
+      "description": "Go duration string such as 1h or 30m; 0 disables refresh.",
+      "type": ["string", "integer"]
+    },
+    "storeKind": {"enum": ["SecretStore", "ClusterSecretStore"]},
+    "storeRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "kind": {"$ref": "#/definitions/storeKind"}
+      }
+    },
+    "storeMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["object", "null"],
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {"type": "boolean"},
+          "namespace": {"type": "string"},
+          "labels": {"$ref": "#/definitions/stringMap"},
+          "annotations": {"$ref": "#/definitions/stringMap"},
+          "provider": {"type": "object"},
+          "extraSpec": {"type": "object"}
+        }
+      }
+    }
+  }
+}

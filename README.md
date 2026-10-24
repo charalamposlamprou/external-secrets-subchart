@@ -178,14 +178,15 @@ Every item accepts `enabled` (default `true`), `labels` and `annotations`. Names
 |------------|--------|
 | `secretStores.<name>`, `clusterSecretStores.<name>` | `provider` **(required)**, `extraSpec` (other spec fields such as `retrySettings`, `refreshInterval`, `conditions`; merged into `spec`, must not contain `provider`) |
 | `externalSecrets.<name>` | `data` and/or `dataFrom` **(at least one required)**, `secretStoreRef`, `refreshInterval`, `refreshPolicy`, `target` (merged over `defaults.target`; `target.name` defaults to the resource name) |
-| `clusterExternalSecrets.<name>` | `externalSecretSpec` **(required, full ExternalSecret spec, verbatim)**, `externalSecretName`, `namespaceSelectors`, `namespaces`, `refreshTime` |
+| `clusterExternalSecrets.<name>` | `externalSecretSpec` **(required, full ExternalSecret spec, verbatim except `secretStoreRef`, which is resolved like an ExternalSecret's)**, `externalSecretName`, `namespaceSelectors`, `namespaces`, `refreshTime` |
 | `pushSecrets.<name>` | `selector` and `data` **(required)**, `secretStoreRefs` (each by `name`/`kind` or by `labelSelector`; defaults to `[defaults.secretStoreRef]`), `refreshInterval`, `updatePolicy`, `deletionPolicy` |
 
 ## Behaviour notes
 
 - **ESO templates vs Helm templates.** `target.template` in ExternalSecrets and `externalSecretSpec` in ClusterExternalSecrets are **not** run through Helm's `tpl`, so ESO's `{{ .key }}` syntax works as written. `namePrefix`, `secretStoreRef.name`, store `provider` and `extraSpec` **are** rendered with `tpl`, so `{{ .Release.Name }}` and friends work there.
-- **Name prefix and references.** When a `secretStoreRef.name` matches a store defined in this chart, `namePrefix` is added to the reference automatically. References to stores defined elsewhere, and anything inside `clusterExternalSecrets.*.externalSecretSpec`, are used exactly as written.
+- **Name prefix and references.** When a `secretStoreRef.name` matches a store defined in this chart, `namePrefix` is added to the reference automatically. This applies to ExternalSecrets, PushSecrets and `clusterExternalSecrets.*.externalSecretSpec.secretStoreRef`, which also falls back to `defaults.secretStoreRef` when unset. References to stores defined elsewhere are used exactly as written.
 - **Disabling refresh.** `refreshInterval: 0` (or `"0"`) is kept as is, so ESO fetches once and never refreshes. It does not fall back to the default.
+- **Schema.** `values.schema.json` checks types and rejects unknown keys, so `enabled: "false"`, a typo such as `datafrom:`, an invalid store `kind` or a non-string label value fails at `helm install`/`template`/`lint` time. Provider and ESO spec contents (`provider`, `target`, `data`, …) are not constrained, so any ESO provider works.
 - **Validation.** Rendering fails with an `external-secrets-subchart: …` message for a missing `provider`, `data`/`dataFrom`, `externalSecretSpec`, PushSecret `selector`/`data` or store name, an invalid store `kind`, or an item that isn't a map. Note that `helm lint` only reports these as `[INFO]`; use `helm template` to see them as errors.
 - **Argo CD ordering.** To have stores sync before the ExternalSecrets that use them, give the stores `annotations: {argocd.argoproj.io/sync-wave: "-1"}`.
 
@@ -224,8 +225,8 @@ helm package . && helm push external-secrets-subchart-0.2.0.tgz oci://ghcr.io/ch
 
 ```bash
 helm lint . --strict -f ci/full-values.yaml
-helm template test . -f ci/full-values.yaml          # surfaces validation failures
+tests/run.sh                                         # golden snapshots + expected failures
 (cd examples/parent-chart && helm dependency update && helm template my-app .)
 ```
 
-`ci/full-values.yaml` exercises every resource kind and the edge cases above. The `lint` workflow runs all three commands on every push and pull request.
+`tests/run.sh` needs only Helm and bash. It renders `ci/full-values.yaml` and every `tests/cases/*.values.yaml`, diffs each against its `*.golden.yaml`, and checks that invalid values fail with the expected message. After an intended template change, run `tests/run.sh --update` and review the golden diff. The `lint` workflow runs all three commands on every push and pull request.

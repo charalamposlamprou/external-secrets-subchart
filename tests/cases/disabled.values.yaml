@@ -1,0 +1,4 @@
+# Master switch off: nothing renders, even with invalid items.
+enabled: false
+externalSecrets:
+  broken: {}

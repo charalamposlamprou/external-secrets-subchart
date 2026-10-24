@@ -1,0 +1,30 @@
+# Everything falls back to defaults; no namePrefix, a store that lives outside this chart.
+defaults:
+  refreshInterval: 2h
+  secretStoreRef: {name: "{{ .Release.Name }}-shared", kind: ClusterSecretStore}
+  target: {creationPolicy: Merge, deletionPolicy: Retain}
+commonAnnotations: {owner: platform}
+externalSecrets:
+  plain:
+    dataFrom:
+      - extract: {key: app/plain}
+  custom-target:
+    namespace: other
+    target: {name: "{{ .Release.Name }}-renamed", creationPolicy: Owner}
+    data:
+      - secretKey: k
+        remoteRef: {key: app/k}
+  off:
+    enabled: false
+clusterExternalSecrets:
+  defaulted:
+    namespaces: [team-a]
+    externalSecretSpec:
+      dataFrom:
+        - extract: {key: shared/config}
+pushSecrets:
+  defaulted:
+    updatePolicy: IfNotExists
+    selector: {secret: {name: s}}
+    data:
+      - match: {secretKey: k, remoteRef: {remoteKey: app/k}}

@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
@@ -26,8 +26,8 @@ jobs:
 
       - run: helm lint . --strict
       - run: helm lint . --strict -f ci/full-values.yaml
-      # lint only reports template `fail` calls as INFO; rendering catches them
-      - run: helm template ci . -f ci/full-values.yaml > /dev/null
+      # lint only reports template `fail` calls as INFO; the tests render and catch them
+      - run: tests/run.sh
 
       - name: Package and push to GHCR
         env:

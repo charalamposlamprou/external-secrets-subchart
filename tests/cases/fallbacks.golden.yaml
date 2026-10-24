@@ -1,0 +1,113 @@
+---
+# Source: external-secrets-subchart/templates/clusterexternalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ClusterExternalSecret
+metadata:
+  name: defaulted
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.1.0
+  annotations:
+    owner: platform
+spec:
+  externalSecretName: defaulted
+  namespaces:
+    - team-a
+  externalSecretSpec:
+    dataFrom:
+    - extract:
+        key: shared/config
+    secretStoreRef:
+      kind: ClusterSecretStore
+      name: ci-shared
+---
+# Source: external-secrets-subchart/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: custom-target
+  namespace: other
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.1.0
+  annotations:
+    owner: platform
+spec:
+  refreshInterval: "2h"
+  secretStoreRef:
+    name: ci-shared
+    kind: ClusterSecretStore
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    name: ci-renamed
+  data:
+    - remoteRef:
+        key: app/k
+      secretKey: k
+---
+# Source: external-secrets-subchart/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: plain
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.1.0
+  annotations:
+    owner: platform
+spec:
+  refreshInterval: "2h"
+  secretStoreRef:
+    name: ci-shared
+    kind: ClusterSecretStore
+  target:
+    creationPolicy: Merge
+    deletionPolicy: Retain
+    name: plain
+  dataFrom:
+    - extract:
+        key: app/plain
+---
+# Source: external-secrets-subchart/templates/pushsecret.yaml
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: defaulted
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.1.0
+  annotations:
+    owner: platform
+spec:
+  refreshInterval: "2h"
+  updatePolicy: IfNotExists
+  secretStoreRefs:
+    - name: ci-shared
+      kind: ClusterSecretStore
+  selector:
+    secret:
+      name: s
+  data:
+    - match:
+        remoteRef:
+          remoteKey: app/k
+        secretKey: k

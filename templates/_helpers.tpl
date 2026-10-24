@@ -1,8 +1,13 @@
 {{/*
+Chart name. Hardcoded because .Chart.Name becomes the alias when used as an aliased dependency.
+*/}}
+{{- define "eso-sub.chartName" -}}external-secrets-subchart{{- end -}}
+
+{{/*
 Chart name and version label value.
 */}}
 {{- define "eso-sub.chart" -}}
-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+{{- printf "%s-%s" (include "eso-sub.chartName" .) .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{/*
@@ -20,6 +25,7 @@ Common labels. Usage: include "eso-sub.labels" (dict "root" $ "extra" $item.labe
 {{- define "eso-sub.labels" -}}
 {{- $base := dict
   "helm.sh/chart" (include "eso-sub.chart" .root)
+  "app.kubernetes.io/name" (include "eso-sub.chartName" .root)
   "app.kubernetes.io/managed-by" .root.Release.Service
   "app.kubernetes.io/instance" .root.Release.Name
   "app.kubernetes.io/part-of" .root.Release.Name

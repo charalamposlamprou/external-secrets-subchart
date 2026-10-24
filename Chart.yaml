@@ -13,3 +13,8 @@ keywords:
   - subchart
 sources:
   - https://github.com/charalamposlamprou/external-secrets-subchart
+home: https://github.com/charalamposlamprou/external-secrets-subchart
+icon: https://raw.githubusercontent.com/external-secrets/external-secrets/main/assets/eso-logo-large.png
+maintainers:
+  - name: charalamposlamprou
+    url: https://github.com/charalamposlamprou
