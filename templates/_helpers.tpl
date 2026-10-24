@@ -353,6 +353,9 @@ Usage: include "eso-sub.awsAuth" (dict "root" $ "provider" $p "kind" $kind "stor
 {{- if $auth.secretRef -}}
 {{- fail (printf "external-secrets-subchart: %s uses static AWS access keys (auth.secretRef). Use an IAM role: auth.jwt.serviceAccountRef with an IRSA ServiceAccount, or omit auth to use the ESO controller's role" .desc) -}}
 {{- end -}}
+{{- if $aws.sessionTags -}}
+{{- fail (printf "external-secrets-subchart: %s sets sessionTags. Hand-written session tags can impersonate another namespace (policies/eso-aws-session-tags.yaml); use sessionTagsPolicy: Simple or Custom" .desc) -}}
+{{- end -}}
 {{- $saName := dig "jwt" "serviceAccountRef" "name" "" $auth -}}
 {{- $accounts := include "eso-sub.serviceAccountItems" .root | fromYaml -}}
 {{- if and $saName (hasKey $accounts $saName) -}}

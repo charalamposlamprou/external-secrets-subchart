@@ -41,6 +41,10 @@ helm upgrade --install external-secrets external-secrets \
   --set "extraEnv[3].name=AWS_ACCESS_KEY_ID" --set "extraEnv[3].value=controller-identity" \
   --set "extraEnv[4].name=AWS_SECRET_ACCESS_KEY" --set "extraEnv[4].value=controller-identity" >/dev/null
 
+echo "--- admission policy for Pod Identity (platform step)"
+kubectl apply -f policies/eso-aws-session-tags.yaml >/dev/null
+for ns_ in "$ns" attacker; do kubectl create namespace "$ns_" --dry-run=client -o yaml | kubectl apply -f - >/dev/null; done
+
 echo "--- this chart"
 # ESO's webhook can take a moment to accept requests after its pods are ready.
 for _ in $(seq 1 30); do
@@ -122,6 +126,59 @@ else
   pass "podIdentity renders no per-app ServiceAccount"
 fi
 
+echo "--- Pod Identity isolation: another namespace can't use my-app's role"
+forged="$(cat <<EOF
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata: {name: forged, namespace: attacker}
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: us-east-1
+      role: ${pi_role}
+      sessionTags: [{key: esoNamespace, value: ${ns}}]
+EOF
+)"
+# The policy binding can take a while to be enforced after it's created (up to 2 minutes here).
+for _ in $(seq 1 60); do
+  out="$(kubectl apply -f - <<<"$forged" 2>&1)" || break
+  kubectl -n attacker delete secretstore forged --ignore-not-found >/dev/null; sleep 2
+done
+if grep -q "eso-aws-session-tags" <<<"$out"; then
+  pass "store with hand-written esoNamespace tag rejected by the admission policy"
+else
+  fail "forged store not rejected: ${out}"
+fi
+kubectl apply -f - >/dev/null <<EOF
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata: {name: by-the-rules, namespace: attacker}
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: us-east-1
+      role: ${pi_role}
+      sessionTagsPolicy: Simple
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata: {name: attempt, namespace: attacker}
+spec:
+  refreshInterval: 1h
+  secretStoreRef: {name: by-the-rules, kind: SecretStore}
+  target: {name: attempt}
+  dataFrom: [{extract: {key: my-app/db}}]
+EOF
+# moto doesn't enforce IAM, so the sync itself proves nothing; the tag it sent does. Force a
+# sync (on a re-run the ExternalSecret already exists) and wait for its STS call to be recorded.
+kubectl -n attacker annotate externalsecret attempt force-sync="$(date +%s)" --overwrite >/dev/null
+for _ in $(seq 1 30); do
+  kubectl -n aws-mock exec -i deploy/moto -- python - < tests/e2e/sts_calls.py | grep -q "esoStoreName=by-the-rules" && break
+  sleep 2
+done
+
 echo "--- STS calls ESO made (moto recording)"
 calls="$(kubectl -n aws-mock exec -i deploy/moto -- python - < tests/e2e/sts_calls.py)"
 if grep -q "^AssumeRoleWithWebIdentity arn:aws:iam::123456789012:role/e2e-my-app-secrets" <<<"$calls"; then
@@ -133,6 +190,17 @@ if grep -q "^AssumeRole ${pi_role} .*esoNamespace=${ns}" <<<"$calls"; then
   pass "podIdentity: AssumeRole into the app role, tagged esoNamespace=${ns}"
 else
   fail "podIdentity: no tagged AssumeRole for ${pi_role}"; echo "$calls" | sort -u
+fi
+if grep -q "^AssumeRole ${pi_role} .*esoNamespace=attacker" <<<"$calls" \
+   && ! grep -q "^AssumeRole ${pi_role} .*esoNamespace=${ns}.*esoStoreName=by-the-rules" <<<"$calls"; then
+  pass "a store in 'attacker' can only send esoNamespace=attacker (my-app's trust requires esoNamespace=${ns})"
+else
+  fail "attacker store tags:"; grep "esoStoreName=by-the-rules\|esoStoreName=forged" <<<"$calls" | sort -u
+fi
+if grep -q "esoStoreName=forged" <<<"$calls"; then
+  fail "the rejected forged store still reached STS"
+else
+  pass "the rejected forged store never reached STS"
 fi
 if grep -q "^AssumeRoleWithWebIdentity ${pi_role}" <<<"$calls"; then
   fail "podIdentity app used IRSA"

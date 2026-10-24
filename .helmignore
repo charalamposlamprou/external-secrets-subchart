@@ -13,3 +13,4 @@ examples/
 dist/
 *.tgz
 tests/
+policies/

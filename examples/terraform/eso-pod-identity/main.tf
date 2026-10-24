@@ -1,6 +1,9 @@
 # The ESO controller's own role for the chart's aws.auth: podIdentity. EKS Pod Identity gives
 # it to the controller pod; the controller then assumes each app's role (with session tags) to
 # read that app's secrets. It has no access to secrets itself.
+#
+# Also apply policies/eso-aws-session-tags.yaml to the cluster: without it, anyone who can
+# create a SecretStore can hand-write the esoNamespace session tag and assume another app's role.
 
 locals {
   role_name = coalesce(var.role_name, "${var.cluster_name}-external-secrets")
