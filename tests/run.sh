@@ -9,6 +9,8 @@ update=false
 [[ "${1:-}" == "--update" ]] && update=true
 failed=0
 pass() { echo "ok   $1"; }
+# Helm versions differ in blank lines between documents (4.3 adds one); compare without them.
+render() { helm template ci . -f "$1" | sed '/^[[:space:]]*$/d'; }
 fail() { echo "FAIL $1"; failed=1; }
 
 # Golden snapshots: tests/cases/<name>.values.yaml -> tests/cases/<name>.golden.yaml
@@ -16,11 +18,11 @@ for values in ci/full-values.yaml tests/cases/*.values.yaml; do
   name="$(basename "$values" .values.yaml)"
   name="${name%.yaml}"
   golden="tests/cases/${name}.golden.yaml"
-  rendered="$(helm template ci . -f "$values")"
+  rendered="$(render "$values")"
   if $update; then
     printf '%s\n' "$rendered" > "$golden"
     echo "updated $golden"
-  elif diff -u "$golden" <(printf '%s\n' "$rendered"); then
+  elif diff -u <(sed '/^[[:space:]]*$/d' "$golden") <(printf '%s\n' "$rendered" | sed '/^[[:space:]]*$/d'); then
     pass "golden: $name"
   else
     fail "golden: $name (run tests/run.sh --update if the change is intended)"
