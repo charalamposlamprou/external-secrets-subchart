@@ -1,4 +1,5 @@
-# Features are opt-in: items of a feature without `enabled: true` don't render.
+# Features are opt-in: entries of a block without `enabled: true` don't render, and the
+# aws role isn't required while no AWS block is enabled.
 defaults:
   secretStoreRef: {name: somewhere}
 externalSecrets:
@@ -11,7 +12,10 @@ pushSecrets:
     not-rendered:
       selector: {secret: {name: s}}
       data: [{match: {secretKey: k, remoteRef: {remoteKey: k}}}]
-aws:
-  roleArn: arn:aws:iam::123456789012:role/unused
-  region: eu-west-1
-  secretsManager: {enabled: true}
+parameterStore:
+  secrets:
+    not-rendered: {X: /x}
+secretsManager:
+  enabled: false
+  secrets:
+    not-rendered: {fromSecret: x}

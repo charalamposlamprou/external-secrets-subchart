@@ -44,7 +44,7 @@ variable "parameter_path_prefixes" {
 }
 
 variable "allow_find" {
-  description = "Allow dataFrom.find (secretsmanager:ListSecrets / ssm:DescribeParameters, which can't be scoped to a prefix)."
+  description = "Allow Secrets Manager dataFrom.find in advanced externalSecrets items (secretsmanager:ListSecrets, which can't be scoped). Not needed for parameterStore fromPath."
   type        = bool
   default     = false
 }

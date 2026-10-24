@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.3.0
+    helm.sh/chart: external-secrets-subchart-0.4.0
   annotations:
     owner: platform
 spec:
@@ -37,7 +37,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.3.0
+    helm.sh/chart: external-secrets-subchart-0.4.0
   annotations:
     owner: platform
 spec:
@@ -66,7 +66,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.3.0
+    helm.sh/chart: external-secrets-subchart-0.4.0
   annotations:
     owner: platform
 spec:
@@ -94,7 +94,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.3.0
+    helm.sh/chart: external-secrets-subchart-0.4.0
   annotations:
     owner: platform
 spec:

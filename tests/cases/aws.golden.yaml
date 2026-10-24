@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.3.0
+    helm.sh/chart: external-secrets-subchart-0.4.0
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/ci-secrets
     owner: platform
@@ -21,7 +21,7 @@ automountServiceAccountToken: false
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
-  name: ci-explicit-ref
+  name: ci-app-config
   namespace: default
   labels:
     app.kubernetes.io/component: external-secrets
@@ -29,19 +29,120 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.3.0
+    helm.sh/chart: external-secrets-subchart-0.4.0
 spec:
-  refreshInterval: "1h"
+  refreshInterval: "10m"
   secretStoreRef:
     name: ci-aws-parameter-store
     kind: SecretStore
   target:
     creationPolicy: Owner
     deletionPolicy: Retain
-    name: ci-explicit-ref
+    name: ci-app-config
+  data:
+    - remoteRef:
+        key: /ci/api-url
+      secretKey: API_URL
+    - remoteRef:
+        key: /ci/log-level
+      secretKey: LOG_LEVEL
+---
+# Source: external-secrets-subchart/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ci-app-env
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.4.0
+spec:
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: ci-aws-secrets-manager
+    kind: SecretStore
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    name: ci-app-env
   dataFrom:
     - extract:
-        key: /ci/other
+        key: ci/env
+---
+# Source: external-secrets-subchart/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ci-app-flags
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.4.0
+spec:
+  refreshInterval: "0"
+  secretStoreRef:
+    name: ci-aws-parameter-store
+    kind: SecretStore
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    name: ci-app-flags
+  dataFrom:
+    - find:
+        name:
+          regexp: .*
+        path: /ci/flags
+      rewrite:
+      - regexp:
+          source: ^/ci/flags/
+          target: ""
+      - regexp:
+          source: /
+          target: _
+---
+# Source: external-secrets-subchart/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ci-db-credentials
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.4.0
+spec:
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: ci-aws-secrets-manager
+    kind: SecretStore
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    name: ci-db-credentials
+  data:
+    - remoteRef:
+        key: ci/api-token
+      secretKey: API_TOKEN
+    - remoteRef:
+        key: ci/db
+        property: password
+        version: AWSCURRENT
+      secretKey: DB_PASS
+    - remoteRef:
+        key: ci/db
+        property: username
+      secretKey: DB_USER
 ---
 # Source: external-secrets-subchart/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
@@ -55,7 +156,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.3.0
+    helm.sh/chart: external-secrets-subchart-0.4.0
 spec:
   refreshInterval: "1h"
   secretStoreRef:
@@ -67,13 +168,13 @@ spec:
     name: ci-from-default
   dataFrom:
     - extract:
-        key: ci/env
+        key: ci/other
 ---
 # Source: external-secrets-subchart/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
-  name: ci-from-parameters
+  name: ci-mixed
   namespace: default
   labels:
     app.kubernetes.io/component: external-secrets
@@ -81,7 +182,46 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.3.0
+    helm.sh/chart: external-secrets-subchart-0.4.0
+spec:
+  refreshInterval: "10m"
+  secretStoreRef:
+    name: ci-aws-parameter-store
+    kind: SecretStore
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    name: ci-mixed
+  data:
+    - remoteRef:
+        key: /ci/extra
+      secretKey: EXTRA
+  dataFrom:
+    - find:
+        name:
+          regexp: .*
+        path: /ci/more
+      rewrite:
+      - regexp:
+          source: ^/ci/more/
+          target: ""
+      - regexp:
+          source: /
+          target: _
+---
+# Source: external-secrets-subchart/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ci-templated
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.4.0
 spec:
   refreshInterval: "1h"
   secretStoreRef:
@@ -90,14 +230,14 @@ spec:
   target:
     creationPolicy: Owner
     deletionPolicy: Retain
-    name: ci-from-parameters
+    name: ci-templated
+    template:
+      data:
+        DSN: '{{ .host }}:5432'
   data:
     - remoteRef:
-        key: /ci/log-level
-      secretKey: LOG_LEVEL
-  dataFrom:
-    - find:
-        path: /ci/config/
+        key: /ci/db-host
+      secretKey: host
 ---
 # Source: external-secrets-subchart/templates/pushsecret.yaml
 apiVersion: external-secrets.io/v1alpha1
@@ -111,7 +251,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.3.0
+    helm.sh/chart: external-secrets-subchart-0.4.0
 spec:
   refreshInterval: "1h"
   secretStoreRefs:
@@ -138,7 +278,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.3.0
+    helm.sh/chart: external-secrets-subchart-0.4.0
 spec:
   provider:
     aws:
@@ -161,7 +301,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.3.0
+    helm.sh/chart: external-secrets-subchart-0.4.0
 spec:
   provider:
     aws:
