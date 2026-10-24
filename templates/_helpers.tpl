@@ -60,7 +60,8 @@ Usage: include "eso-sub.featureItems" (dict "root" $ "feature" "externalSecrets"
 
 {{/*
 AWS setup as YAML when secretsManager and/or parameterStore is enabled, else empty:
-  serviceAccountName: rendered IRSA account name (no namePrefix)
+  auth: irsa (default) or podIdentity
+  serviceAccountName: rendered IRSA account name (no namePrefix); irsa only
   stores: {secretsManager: <release>-secrets-manager, parameterStore: <release>-parameter-store}
           for the enabled ones; exact rendered names (no namePrefix), unique per release
   defaultStore: store key used by externalSecrets items without secretStoreRef/source
@@ -83,7 +84,12 @@ Usage: include "eso-sub.aws" $ | fromYaml
 {{- if not $a.region -}}
 {{- fail (printf "external-secrets-subchart: %s enabled but aws.region is empty" $using) -}}
 {{- end -}}
+{{- $auth := $a.auth | default "irsa" -}}
+{{- if and (eq $auth "podIdentity") (or $a.serviceAccountName $a.serviceAccountAnnotations) -}}
+{{- fail "external-secrets-subchart: aws.serviceAccountName/serviceAccountAnnotations only apply to aws.auth: irsa; with podIdentity no ServiceAccount is rendered" -}}
+{{- end -}}
 {{- toYaml (dict
+  "auth" $auth
   "serviceAccountName" (tpl ($a.serviceAccountName | default "{{ .Release.Name }}-secrets") .)
   "stores" $stores
   "defaultStore" (get $stores "secretsManager" | default (get $stores "parameterStore"))) -}}
@@ -196,18 +202,30 @@ Usage: include "eso-sub.externalSecretItems" $ | fromYaml
 Namespaced SecretStores to render: secretStores.items (if enabled) plus one store per enabled
 aws service, all authenticating as the aws ServiceAccount. The aws stores carry `fullName`,
 their exact rendered name.
+  irsa:        auth.jwt.serviceAccountRef -> ESO requests a token for the app's ServiceAccount
+               and calls AssumeRoleWithWebIdentity with its role.
+  podIdentity: no auth block -> ESO uses its own (EKS Pod Identity) credentials, then
+               AssumeRole into aws.roleArn with session tags (esoNamespace, ...) that the
+               role's trust policy checks. Needs ESO >= 2.5.0.
 Usage: include "eso-sub.secretStoreItems" $ | fromYaml
 */}}
 {{- define "eso-sub.secretStoreItems" -}}
 {{- $items := include "eso-sub.featureItems" (dict "root" . "feature" "secretStores") | fromYaml -}}
 {{- with include "eso-sub.aws" . | fromYaml -}}
 {{- $auth := dict "jwt" (dict "serviceAccountRef" (dict "name" .serviceAccountName)) -}}
+{{- $mode := .auth -}}
 {{- range $source, $storeName := .stores -}}
 {{- if hasKey $items $storeName -}}
 {{- fail (printf "external-secrets-subchart: %s store %q is also defined in secretStores.items; rename one" $source $storeName) -}}
 {{- end -}}
 {{- $service := ternary "SecretsManager" "ParameterStore" (eq $source "secretsManager") -}}
-{{- $aws := dict "service" $service "region" $.Values.aws.region "auth" (deepCopy $auth) -}}
+{{- $aws := dict "service" $service "region" $.Values.aws.region -}}
+{{- if eq $mode "podIdentity" -}}
+{{- $_ := set $aws "role" (tpl $.Values.aws.roleArn $) -}}
+{{- $_ := set $aws "sessionTagsPolicy" "Simple" -}}
+{{- else -}}
+{{- $_ := set $aws "auth" (deepCopy $auth) -}}
+{{- end -}}
 {{- $_ := set $items $storeName (dict "provider" (dict "aws" $aws) "fullName" $storeName) -}}
 {{- end -}}
 {{- end -}}
@@ -215,13 +233,15 @@ Usage: include "eso-sub.secretStoreItems" $ | fromYaml
 {{- end -}}
 
 {{/*
-ServiceAccounts to render: serviceAccounts.items (if enabled) plus the aws shorthand account.
+ServiceAccounts to render: serviceAccounts.items (if enabled) plus the aws IRSA account
+(irsa mode only; podIdentity needs no per-app ServiceAccount).
 The shorthand account carries `fullName`, its exact rendered name (no namePrefix).
 Usage: include "eso-sub.serviceAccountItems" $ | fromYaml
 */}}
 {{- define "eso-sub.serviceAccountItems" -}}
 {{- $items := include "eso-sub.featureItems" (dict "root" . "feature" "serviceAccounts") | fromYaml -}}
-{{- with include "eso-sub.aws" . | fromYaml -}}
+{{- $aws := include "eso-sub.aws" . | fromYaml -}}
+{{- with (and $aws (eq $aws.auth "irsa") $aws) -}}
 {{- if hasKey $items .serviceAccountName -}}
 {{- fail (printf "external-secrets-subchart: aws service account %q is also defined in serviceAccounts.items; rename one" .serviceAccountName) -}}
 {{- end -}}

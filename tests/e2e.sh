@@ -3,9 +3,13 @@
 # throwaway cluster:
 #   kind create cluster --name eso-e2e
 #   tests/e2e.sh
-# ESO authenticates exactly as in EKS: it requests a token for the chart's ServiceAccount,
-# calls STS AssumeRoleWithWebIdentity with aws.roleArn, then reads SSM and Secrets Manager.
-# Only the AWS endpoints are swapped for moto. IAM policies aren't enforced by moto; the
+# aws.auth: irsa: ESO authenticates exactly as in EKS: it requests a token for the chart's
+# ServiceAccount, calls STS AssumeRoleWithWebIdentity with aws.roleArn, then reads SSM and
+# Secrets Manager. Only the AWS endpoints are swapped for moto.
+# aws.auth: podIdentity: the controller gets its own credentials from the standard AWS env vars
+# (the AWS SDK's default chain, the same path EKS Pod Identity credentials take; kind can't run
+# the real Pod Identity agent), then ESO assumes the app role with session tags.
+# Both modes run side by side in one cluster. IAM policies aren't enforced by moto; the
 # Terraform tests cover those.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -22,6 +26,10 @@ kubectl create namespace aws-mock --dry-run=client -o yaml | kubectl apply -f - 
 kubectl apply -f tests/e2e/moto.yaml >/dev/null
 kubectl -n aws-mock rollout status deploy/moto --timeout=180s >/dev/null
 kubectl -n aws-mock exec -i deploy/moto -- python - < tests/e2e/seed.py
+kubectl -n aws-mock exec deploy/moto -- python -c '
+import urllib.request
+for op in ("stop-recording", "reset-recording", "start-recording"):
+    urllib.request.urlopen(urllib.request.Request(f"http://localhost:5000/moto-api/recorder/{op}", method="POST"))' >/dev/null
 
 echo "--- External Secrets Operator ${eso_version}"
 helm upgrade --install external-secrets external-secrets \
@@ -29,7 +37,9 @@ helm upgrade --install external-secrets external-secrets \
   -n external-secrets --create-namespace --wait --timeout 5m \
   --set "extraEnv[0].name=AWS_STS_ENDPOINT" --set "extraEnv[0].value=${endpoint}" \
   --set "extraEnv[1].name=AWS_SSM_ENDPOINT" --set "extraEnv[1].value=${endpoint}" \
-  --set "extraEnv[2].name=AWS_SECRETSMANAGER_ENDPOINT" --set "extraEnv[2].value=${endpoint}" >/dev/null
+  --set "extraEnv[2].name=AWS_SECRETSMANAGER_ENDPOINT" --set "extraEnv[2].value=${endpoint}" \
+  --set "extraEnv[3].name=AWS_ACCESS_KEY_ID" --set "extraEnv[3].value=controller-identity" \
+  --set "extraEnv[4].name=AWS_SECRET_ACCESS_KEY" --set "extraEnv[4].value=controller-identity" >/dev/null
 
 echo "--- this chart"
 # ESO's webhook can take a moment to accept requests after its pods are ready.
@@ -90,6 +100,45 @@ boto3.client("ssm", endpoint_url="http://localhost:5000", region_name="us-east-1
 kubectl -n "$ns" annotate externalsecret my-app-config force-sync="$(date +%s)" --overwrite >/dev/null
 for _ in $(seq 1 30); do [[ "$(value my-app-config LOG_LEVEL)" == info ]] && break; sleep 2; done
 expect my-app-config LOG_LEVEL info
+
+echo "--- aws.auth: podIdentity, next to the IRSA apps"
+pi_role="arn:aws:iam::123456789012:role/e2e-pi-app-secrets"
+if helm upgrade --install pi-app . -n "$ns" -f tests/e2e/values.yaml \
+     --set aws.auth=podIdentity --set "aws.roleArn=${pi_role}" \
+     --set-json 'parameterStore.secrets={"pi-config":{"LOG_LEVEL":"/my-app/log-level"}}' \
+     --set-json 'secretsManager.secrets={"pi-env":{"fromSecret":"my-app/env"}}' >/dev/null \
+   && kubectl -n "$ns" wait --for=condition=Ready externalsecret/pi-config externalsecret/pi-env --timeout=120s >/dev/null; then
+  # On a re-run pi-config may hold the value from before the parameter change above.
+  kubectl -n "$ns" annotate externalsecret pi-config force-sync="$(date +%s)" --overwrite >/dev/null
+  for _ in $(seq 1 30); do [[ "$(value pi-config LOG_LEVEL)" == info ]] && break; sleep 2; done
+  expect pi-config LOG_LEVEL info
+  expect_keys pi-env "ENV_A ENV_B"
+else
+  fail "pi-app didn't sync"; kubectl -n "$ns" describe externalsecret pi-config secretstore pi-app-parameter-store
+fi
+if kubectl -n "$ns" get serviceaccount pi-app-secrets >/dev/null 2>&1; then
+  fail "podIdentity rendered a per-app ServiceAccount"
+else
+  pass "podIdentity renders no per-app ServiceAccount"
+fi
+
+echo "--- STS calls ESO made (moto recording)"
+calls="$(kubectl -n aws-mock exec -i deploy/moto -- python - < tests/e2e/sts_calls.py)"
+if grep -q "^AssumeRoleWithWebIdentity arn:aws:iam::123456789012:role/e2e-my-app-secrets" <<<"$calls"; then
+  pass "irsa: AssumeRoleWithWebIdentity with the app's role"
+else
+  fail "irsa: no AssumeRoleWithWebIdentity for e2e-my-app-secrets"; echo "$calls" | sort -u
+fi
+if grep -q "^AssumeRole ${pi_role} .*esoNamespace=${ns}" <<<"$calls"; then
+  pass "podIdentity: AssumeRole into the app role, tagged esoNamespace=${ns}"
+else
+  fail "podIdentity: no tagged AssumeRole for ${pi_role}"; echo "$calls" | sort -u
+fi
+if grep -q "^AssumeRoleWithWebIdentity ${pi_role}" <<<"$calls"; then
+  fail "podIdentity app used IRSA"
+else
+  pass "podIdentity app never used IRSA"
+fi
 
 echo "--- a second app in the same namespace"
 if helm upgrade --install other-app . -n "$ns" -f tests/e2e/values.yaml \

@@ -38,7 +38,12 @@ defaults:
 aws:
   roleArn: ""                  # arn:aws:iam::<account>:role/<app>-secrets; may be templated
   region: ""                   # e.g. eu-west-1
-  # Exact name, not prefixed with namePrefix. Must match the IAM role's trust policy.
+  # How ESO gets the role (see README "Authentication"):
+  #   irsa         per-app ServiceAccount <release>-secrets with the role (IRSA); ESO >= 0.17
+  #   podIdentity  no per-app ServiceAccount; ESO's own EKS Pod Identity credentials assume
+  #                roleArn with session tags the role's trust policy checks; ESO >= 2.5.0
+  auth: irsa
+  # irsa only. Exact name, not prefixed with namePrefix. Must match the IAM role's trust policy.
   serviceAccountName: ""       # default "<release name>-secrets"
   serviceAccountAnnotations: {}
 

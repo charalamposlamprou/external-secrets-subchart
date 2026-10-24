@@ -27,6 +27,11 @@ check() {  # <label> <rendered manifests>
 }
 
 for values in ci/full-values.yaml tests/cases/*.values.yaml; do
+  # A fixture can declare the oldest ESO it needs: "# min-eso: v2.5.0" on its first line.
+  min="$(sed -n '1s/^# min-eso: *\(v[0-9.]*\).*/\1/p' "$values")"
+  if [[ -n "$min" && "$(printf '%s\n%s\n' "$min" "$version" | sort -V | head -n1)" != "$min" ]]; then
+    echo "skip ESO ${version}: $values (needs ESO >= ${min})"; continue
+  fi
   rendered="$(helm template ci . -f "$values")"
   grep -q '^kind:' <<<"$rendered" && check "$values" "$rendered"
 done

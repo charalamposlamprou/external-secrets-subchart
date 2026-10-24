@@ -1,5 +1,9 @@
-# One IAM role per app, assumable only by that app's ESO ServiceAccount (IRSA),
-# with read access to that app's secrets and/or parameters only.
+# One IAM role per app, with read access to that app's secrets and/or parameters only.
+# Who may assume it depends on the chart's aws.auth (see `trust`):
+#   irsa          the app's ESO ServiceAccount, through the cluster's OIDC provider
+#   pod_identity  the ESO controller's Pod Identity role, only for ExternalSecrets in the app's
+#                 namespace (checked through the esoNamespace session tag ESO sends)
+# Trust both while moving an app from one to the other.
 
 locals {
   role_name       = coalesce(var.role_name, "${var.cluster_name}-${var.app}-secrets")
@@ -27,21 +31,46 @@ data "aws_partition" "current" {}
 data "aws_region" "current" {}
 
 data "aws_iam_policy_document" "trust" {
-  statement {
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-    principals {
-      type        = "Federated"
-      identifiers = ["arn:${local.partition}:iam::${local.account}:oidc-provider/${local.oidc_issuer}"]
+  dynamic "statement" {
+    for_each = contains(var.trust, "irsa") ? [1] : []
+    content {
+      sid     = "IRSA"
+      actions = ["sts:AssumeRoleWithWebIdentity"]
+      principals {
+        type        = "Federated"
+        identifiers = ["arn:${local.partition}:iam::${local.account}:oidc-provider/${local.oidc_issuer}"]
+      }
+      condition {
+        test     = "StringEquals"
+        variable = "${local.oidc_issuer}:sub"
+        values   = ["system:serviceaccount:${var.namespace}:${local.service_account}"]
+      }
+      condition {
+        test     = "StringEquals"
+        variable = "${local.oidc_issuer}:aud"
+        values   = ["sts.amazonaws.com"]
+      }
     }
-    condition {
-      test     = "StringEquals"
-      variable = "${local.oidc_issuer}:sub"
-      values   = ["system:serviceaccount:${var.namespace}:${local.service_account}"]
-    }
-    condition {
-      test     = "StringEquals"
-      variable = "${local.oidc_issuer}:aud"
-      values   = ["sts.amazonaws.com"]
+  }
+
+  dynamic "statement" {
+    for_each = contains(var.trust, "pod_identity") ? [1] : []
+    content {
+      sid     = "PodIdentityViaESO"
+      actions = ["sts:AssumeRole", "sts:TagSession"]
+      principals {
+        type = "AWS"
+        # empty when unset, so the role's precondition reports the missing input
+        identifiers = compact([var.eso_controller_role_arn])
+      }
+      # ESO tags every session with the namespace of the ExternalSecret it is syncing
+      # (sessionTagsPolicy: Simple, set by the chart). Without this condition any namespace
+      # could point a SecretStore at this role.
+      condition {
+        test     = "StringEquals"
+        variable = "aws:RequestTag/esoNamespace"
+        values   = [var.namespace]
+      }
     }
   }
 }
@@ -110,6 +139,10 @@ resource "aws_iam_role" "this" {
     precondition {
       condition     = var.secrets_manager || var.parameter_store
       error_message = "Enable at least one of secrets_manager or parameter_store."
+    }
+    precondition {
+      condition     = !contains(var.trust, "pod_identity") || var.eso_controller_role_arn != null
+      error_message = "trust includes pod_identity: set eso_controller_role_arn (the eso-pod-identity module's role_arn)."
     }
     precondition {
       condition     = length(local.role_name) <= 64
