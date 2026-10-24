@@ -14,3 +14,12 @@ jobs:
       - name: Parent chart example
         working-directory: examples/parent-chart
         run: helm dependency update && helm template my-app .
+
+  version-bump:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # base branch history and tags
+      - run: ci/check-version-bump.sh "origin/${GITHUB_BASE_REF}"

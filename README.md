@@ -202,17 +202,17 @@ Every item accepts `enabled` (default `true`), `labels` and `annotations`. Names
 
 ## Releasing
 
-Charts are published to GitHub Container Registry as OCI artifacts by [`.github/workflows/release.yaml`](.github/workflows/release.yaml).
+Releases are automatic. [`.github/workflows/release.yaml`](.github/workflows/release.yaml) runs on every push to `main` and publishes when `Chart.yaml` has a `version` that has no `v<version>` tag yet. It lints and tests the chart, pushes `oci://ghcr.io/charalamposlamprou/charts/external-secrets-subchart:<version>`, then creates the `v<version>` tag and a GitHub Release with the packaged `.tgz` and generated notes. Pushes that don't change the version do nothing.
 
-1. Bump `version` in `Chart.yaml` (e.g. `0.2.0`) and commit.
-2. Tag and push. The tag must be `v` + the chart version, or the workflow fails before publishing:
-   ```bash
-   git tag v0.2.0 && git push origin v0.2.0
-   ```
-3. The workflow lints and renders the chart, then pushes `oci://ghcr.io/charalamposlamprou/charts/external-secrets-subchart:0.2.0`.
-4. Bump `version` in the consuming chart's `dependencies` and run `helm dependency update`.
+To release:
 
-**First release only:** GHCR creates new packages as **private**, even from a public repo. After the first tag is published, open your GitHub profile → **Packages** → `charts/external-secrets-subchart` → **Package settings** → **Change visibility** → **Public**. Later versions keep that visibility, and anyone can pull the chart without logging in.
+1. In your PR, bump `version` in `Chart.yaml` (e.g. `0.1.0` → `0.2.0`).
+2. Merge it. The release appears under **Releases** a minute later.
+3. Bump `version` in the consuming chart's `dependencies` and run `helm dependency update`.
+
+A PR check (`version-bump` in the `lint` workflow, script [`ci/check-version-bump.sh`](ci/check-version-bump.sh)) fails if a PR changes anything that goes into the package (`Chart.yaml`, `values*`, `templates/`, `README.md`) while keeping a version that is already released, or lowers the version. Changes to `ci/`, `tests/`, `examples/` or workflows don't need a bump. To retry a failed release, re-run the workflow, or start it from **Actions → release → Run workflow**.
+
+**First release only:** GHCR creates new packages as **private**, even from a public repo. After the first release, open https://github.com/users/charalamposlamprou/packages/container/charts%2Fexternal-secrets-subchart/settings (or your profile → **Packages** → `charts/external-secrets-subchart` → **Package settings**) and use **Danger Zone → Change visibility → Public**. Later versions keep that visibility, and anyone can pull the chart without logging in.
 
 Manual publish (without Actions; token needs `write:packages`):
 
