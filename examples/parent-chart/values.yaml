@@ -1,7 +1,7 @@
 image: nginx:1.27
 
 # Everything about this app's secrets, in one block (the subchart's alias).
-secrets:
+eso:
   # The app's IAM role (create it with examples/terraform/irsa-role).
   aws:
     roleArn: arn:aws:iam::123456789012:role/my-cluster-my-app-secrets

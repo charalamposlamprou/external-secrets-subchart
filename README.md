@@ -6,7 +6,7 @@ A Helm **subchart** that turns AWS SSM Parameter Store parameters and AWS Secret
 
 ```yaml
 # my-app/values.yaml
-secrets:
+eso:
   aws:
     roleArn: arn:aws:iam::123456789012:role/my-cluster-my-app-secrets
     region: eu-west-1
@@ -88,7 +88,7 @@ secretsManager.secrets.* ─> SecretStore "my-app-secrets-manager" ─┘       
 
 ```hcl
 module "my_app_secrets_role" {
-  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.6.2"
+  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.6.3"
 
   cluster_name = "my-cluster"
   app          = "my-app"       # role "my-cluster-my-app-secrets"
@@ -118,7 +118,7 @@ The role trusts only `system:serviceaccount:<namespace>:<service_account>` throu
 2. **Apply the admission policy.** This is required. Without it, anyone who can create a SecretStore can hand-write the `esoNamespace` session tag and use another app's role (see [Security](#security-of-the-two-modes)):
 
    ```bash
-   kubectl apply -f https://raw.githubusercontent.com/charalamposlamprou/external-secrets-subchart/v0.6.2/policies/eso-aws-session-tags.yaml
+   kubectl apply -f https://raw.githubusercontent.com/charalamposlamprou/external-secrets-subchart/v0.6.3/policies/eso-aws-session-tags.yaml
    ```
 
    It rejects AWS stores with hand-written `sessionTags`, and AWS stores with a `role` unless they set `sessionTagsPolicy: Simple` or `Custom`, which make ESO set the real namespace. IRSA stores and other providers are unaffected.
@@ -126,7 +126,7 @@ The role trusts only `system:serviceaccount:<namespace>:<service_account>` throu
 
 ```hcl
 module "eso_pod_identity" {
-  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/eso-pod-identity?ref=v0.6.2"
+  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/eso-pod-identity?ref=v0.6.3"
 
   cluster_name  = "my-cluster"
   app_role_arns = ["arn:aws:iam::123456789012:role/my-cluster-*-secrets"]   # app roles it may assume
@@ -138,7 +138,7 @@ The controller role can't read any secret itself; it can only assume the listed 
 
 ```hcl
 module "my_app_secrets_role" {
-  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.6.2"
+  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.6.3"
 
   cluster_name    = "my-cluster"
   app             = "my-app"
@@ -170,11 +170,13 @@ The role is named `<cluster_name>-<app>-secrets` by default, because IAM role na
 # my-app/Chart.yaml
 dependencies:
   - name: external-secrets-subchart
-    version: 0.6.2
+    version: 0.6.3
     repository: oci://ghcr.io/charalamposlamprou/charts
-    alias: secrets               # values live under `secrets:`
-    condition: secrets.enabled
+    alias: eso                   # values live under `eso:`
+    condition: eso.enabled
 ```
+
+The alias is the key your values go under, so pick one your chart doesn't already use. Two values blocks with the same key don't merge: the subchart would receive your chart's keys and reject them. This README uses `eso`. Avoid `secrets` and `externalSecrets`: common app charts already use those keys, and both repeat a key inside this chart (`parameterStore.secrets`, `externalSecrets`). Avoid leaving the alias out too: the key would then be `external-secrets-subchart`, and the hyphens break `.Values.` access in your templates.
 
 For a local checkout next to your chart, use `repository: file://../external-secrets-subchart`. Then fetch it. The package is public, so no login is needed:
 
@@ -186,7 +188,7 @@ helm dependency update ./my-app
 
 ```yaml
 # my-app/values.yaml
-secrets:
+eso:
   aws:
     roleArn: arn:aws:iam::123456789012:role/my-cluster-my-app-secrets   # role_arn from step 1
     region: eu-west-1
@@ -286,7 +288,7 @@ Secrets mounted as volumes update in place without a restart, after the kubelet'
 `values-prod.yaml` only needs what differs. Maps merge across files, so other entries are kept:
 
 ```yaml
-secrets:
+eso:
   parameterStore:
     secrets:
       my-app-config:
@@ -309,7 +311,7 @@ When dev, staging and prod are separate AWS accounts (each with its own EKS clus
 ```hcl
 # environments/dev/main.tf (provider configured for the dev account)
 module "my_app_secrets_role" {
-  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.6.2"
+  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.6.3"
 
   cluster_name    = "dev"            # the dev account's EKS cluster
   app             = "my-app"
@@ -325,7 +327,7 @@ module "my_app_secrets_role" {
 
 ```yaml
 # my-app/values.yaml (every environment)
-secrets:
+eso:
   aws:
     region: eu-west-1
   parameterStore:
@@ -342,14 +344,14 @@ secrets:
 
 ```yaml
 # my-app/values-dev.yaml
-secrets:
+eso:
   aws:
     roleArn: arn:aws:iam::111111111111:role/dev-my-app-secrets
 ```
 
 ```yaml
 # my-app/values-prod.yaml
-secrets:
+eso:
   aws:
     roleArn: arn:aws:iam::210987654321:role/prod-my-app-secrets
 ```
@@ -414,7 +416,7 @@ For anything the simple blocks don't cover, these blocks expose ESO resources al
 `externalSecrets` and `pushSecrets` items can use the AWS stores with `source: parameterStore` / `source: secretsManager`. Without `source` or `secretStoreRef`, they use `defaults.secretStoreRef`, then the Secrets Manager store (or Parameter Store if only that is enabled):
 
 ```yaml
-secrets:
+eso:
   aws: {roleArn: "arn:aws:iam::123456789012:role/my-cluster-my-app-secrets", region: eu-west-1}
   parameterStore:
     enabled: true                # creates the store; simple entries are optional
@@ -439,7 +441,7 @@ secrets:
 **A store that already exists in the cluster** (no IAM role from this chart):
 
 ```yaml
-secrets:
+eso:
   defaults:
     secretStoreRef: {name: shared-secrets-manager, kind: ClusterSecretStore}
   externalSecrets:
@@ -453,7 +455,7 @@ secrets:
 **HashiCorp Vault or another provider:**
 
 ```yaml
-secrets:
+eso:
   secretStores:
     enabled: true
     items:
@@ -478,7 +480,9 @@ PushSecrets need write permissions on the role in addition to the read ones (`ss
 
 ## Upgrading
 
-**From 0.6.0 / 0.6.1 with `aws.auth: podIdentity`:** apply the admission policy now: `kubectl apply -f https://raw.githubusercontent.com/charalamposlamprou/external-secrets-subchart/v0.6.2/policies/eso-aws-session-tags.yaml`. Those releases documented Pod Identity without it, and without it other namespaces can use an app's role through hand-written session tags. The chart's own output already complies, so nothing else changes. IRSA apps are not affected.
+**From 0.6.2:** nothing to change. The README and `examples/parent-chart` now use `alias: eso` instead of `alias: secrets`. The alias is set in your chart's `Chart.yaml`, so `alias: secrets` keeps working. To switch, change `alias` and `condition` in `Chart.yaml` and rename the `secrets:` key to `eso:` in every values file in the same change. The rendered output stays the same.
+
+**From 0.6.0 / 0.6.1 with `aws.auth: podIdentity`:** apply the admission policy now: `kubectl apply -f https://raw.githubusercontent.com/charalamposlamprou/external-secrets-subchart/v0.6.3/policies/eso-aws-session-tags.yaml`. Those releases documented Pod Identity without it, and without it other namespaces can use an app's role through hand-written session tags. The chart's own output already complies, so nothing else changes. IRSA apps are not affected.
 
 **From 0.5.** Nothing to change. `aws.auth` defaults to `irsa`, which renders exactly what 0.5 did. Pod Identity is opt-in; see [Moving an app from IRSA to Pod Identity](#moving-an-app-from-irsa-to-pod-identity).
 
@@ -490,7 +494,7 @@ PushSecrets need write permissions on the role in addition to the read ones (`ss
 
 ```yaml
 # 0.3
-secrets:
+eso:
   aws:
     enabled: true
     roleArn: arn:aws:iam::123456789012:role/my-cluster-my-app-secrets
@@ -508,7 +512,7 @@ secrets:
 
 ```yaml
 # 0.4 and later
-secrets:
+eso:
   aws:
     roleArn: arn:aws:iam::123456789012:role/my-cluster-my-app-secrets
     region: eu-west-1
