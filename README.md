@@ -63,7 +63,7 @@ With the Terraform in [`examples/terraform/irsa-role`](examples/terraform/irsa-r
 
 ```hcl
 module "my_app_secrets_role" {
-  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.5.0"
+  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.5.1"
 
   cluster_name = "my-cluster"
   app          = "my-app"       # role "my-cluster-my-app-secrets"
@@ -102,7 +102,7 @@ The role is named `<cluster_name>-<app>-secrets` by default, because IAM role na
 # my-app/Chart.yaml
 dependencies:
   - name: external-secrets-subchart
-    version: 0.5.0
+    version: 0.5.1
     repository: oci://ghcr.io/charalamposlamprou/charts
     alias: secrets               # values live under `secrets:`
     condition: secrets.enabled
@@ -210,6 +210,66 @@ secrets:
         enabled: false                       # keep the entry, render nothing
       legacy: null                           # remove the entry entirely
 ```
+
+### One AWS account per environment
+
+When dev, staging and prod are separate AWS accounts (each with its own EKS cluster), every account gets its own copy of the app's IAM role, and only the role ARN differs between environments. Secret and parameter names can stay the same in every account, because the accounts already keep them apart.
+
+**Terraform:** apply the [`irsa-role`](examples/terraform/irsa-role) module once per account, with that account's AWS provider and that environment's cluster:
+
+```hcl
+# environments/dev/main.tf (provider configured for the dev account)
+module "my_app_secrets_role" {
+  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.5.1"
+
+  cluster_name    = "dev"            # the dev account's EKS cluster
+  app             = "my-app"
+  namespace       = "my-app"
+  parameter_store = true
+  secrets_manager = true
+}
+# -> role_arn = arn:aws:iam::111111111111:role/dev-my-app-secrets
+# environments/prod/main.tf: the same block with cluster_name = "prod", applied with the prod provider
+```
+
+**Values:** keep everything shared in `values.yaml` and put only the role ARN (and the region, if it differs) in each environment's file:
+
+```yaml
+# my-app/values.yaml (every environment)
+secrets:
+  aws:
+    region: eu-west-1
+  parameterStore:
+    enabled: true
+    secrets:
+      my-app-config:
+        LOG_LEVEL: /my-app/log-level      # same name in every account
+  secretsManager:
+    enabled: true
+    secrets:
+      my-app-env:
+        fromSecret: my-app/env
+```
+
+```yaml
+# my-app/values-dev.yaml
+secrets:
+  aws:
+    roleArn: arn:aws:iam::111111111111:role/dev-my-app-secrets
+```
+
+```yaml
+# my-app/values-prod.yaml
+secrets:
+  aws:
+    roleArn: arn:aws:iam::210987654321:role/prod-my-app-secrets
+```
+
+```bash
+helm upgrade --install my-app ./my-app -n my-app -f my-app/values.yaml -f my-app/values-prod.yaml
+```
+
+Each environment's role trusts only its own cluster's OIDC provider and grants access only within its own account, so dev can't read prod's secrets. If an environment encrypts with a customer-managed KMS key, pass that account's key in `kms_key_arns` for that environment.
 
 ## How this compares to other approaches
 
