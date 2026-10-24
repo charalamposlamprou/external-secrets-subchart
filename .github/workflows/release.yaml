@@ -1,38 +1,65 @@
 name: release
+# Publishes the chart whenever main carries a Chart.yaml version that has no
+# v<version> tag yet: test, push to GHCR, then tag and create a GitHub Release.
+# To release, bump `version` in Chart.yaml and merge.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
-  contents: read
-  packages: write
+  contents: write   # create tag + GitHub Release
+  packages: write   # push to GHCR
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
         with:
           version: v3.16.2
 
-      - name: Check tag matches Chart.yaml version
+      - name: Check whether this version is already released
+        id: version
         run: |
-          chart_version="$(helm show chart . | awk '/^version:/ {print $2}')"
-          if [ "v${chart_version}" != "${GITHUB_REF_NAME}" ]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} does not match Chart.yaml version ${chart_version}"
-            exit 1
+          version="$(helm show chart . | awk '/^version:/ {print $2}')"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v${version}" >/dev/null; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::v${version} is already released; nothing to publish"
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - run: helm lint . --strict
-      - run: helm lint . --strict -f ci/full-values.yaml
-      # lint only reports template `fail` calls as INFO; rendering catches them
-      - run: helm template ci . -f ci/full-values.yaml > /dev/null
+      - if: steps.version.outputs.released == 'false'
+        run: helm lint . --strict && helm lint . --strict -f ci/full-values.yaml
+      # lint only reports template `fail` calls as INFO; the tests render and catch them
+      - if: steps.version.outputs.released == 'false'
+        run: tests/run.sh
 
       - name: Package and push to GHCR
+        if: steps.version.outputs.released == 'false'
         env:
           OWNER: ${{ github.repository_owner }}
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
           helm package . --destination dist
           helm push dist/*.tgz "oci://ghcr.io/${OWNER,,}/charts"
+
+      - name: Tag and create GitHub Release
+        if: steps.version.outputs.released == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          gh release create "v${VERSION}" dist/*.tgz \
+            --target "${GITHUB_SHA}" \
+            --title "v${VERSION}" \
+            --generate-notes \
+            --notes "Install: \`helm pull oci://ghcr.io/${OWNER,,}/charts/external-secrets-subchart --version ${VERSION}\`"

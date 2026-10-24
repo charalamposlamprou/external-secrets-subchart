@@ -2,7 +2,7 @@ name: lint
 on: [push, pull_request]
 jobs:
   helm:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
@@ -10,7 +10,16 @@ jobs:
           version: v3.16.2
       - run: helm lint . --strict
       - run: helm lint . --strict -f ci/full-values.yaml
-      - run: helm template ci . -f ci/full-values.yaml
+      - run: tests/run.sh
       - name: Parent chart example
         working-directory: examples/parent-chart
         run: helm dependency update && helm template my-app .
+
+  version-bump:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # base branch history and tags
+      - run: ci/check-version-bump.sh "origin/${GITHUB_BASE_REF}"

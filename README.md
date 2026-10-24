@@ -178,14 +178,15 @@ Every item accepts `enabled` (default `true`), `labels` and `annotations`. Names
 |------------|--------|
 | `secretStores.<name>`, `clusterSecretStores.<name>` | `provider` **(required)**, `extraSpec` (other spec fields such as `retrySettings`, `refreshInterval`, `conditions`; merged into `spec`, must not contain `provider`) |
 | `externalSecrets.<name>` | `data` and/or `dataFrom` **(at least one required)**, `secretStoreRef`, `refreshInterval`, `refreshPolicy`, `target` (merged over `defaults.target`; `target.name` defaults to the resource name) |
-| `clusterExternalSecrets.<name>` | `externalSecretSpec` **(required, full ExternalSecret spec, verbatim)**, `externalSecretName`, `namespaceSelectors`, `namespaces`, `refreshTime` |
+| `clusterExternalSecrets.<name>` | `externalSecretSpec` **(required, full ExternalSecret spec, verbatim except `secretStoreRef`, which is resolved like an ExternalSecret's)**, `externalSecretName`, `namespaceSelectors`, `namespaces`, `refreshTime` |
 | `pushSecrets.<name>` | `selector` and `data` **(required)**, `secretStoreRefs` (each by `name`/`kind` or by `labelSelector`; defaults to `[defaults.secretStoreRef]`), `refreshInterval`, `updatePolicy`, `deletionPolicy` |
 
 ## Behaviour notes
 
 - **ESO templates vs Helm templates.** `target.template` in ExternalSecrets and `externalSecretSpec` in ClusterExternalSecrets are **not** run through Helm's `tpl`, so ESO's `{{ .key }}` syntax works as written. `namePrefix`, `secretStoreRef.name`, store `provider` and `extraSpec` **are** rendered with `tpl`, so `{{ .Release.Name }}` and friends work there.
-- **Name prefix and references.** When a `secretStoreRef.name` matches a store defined in this chart, `namePrefix` is added to the reference automatically. References to stores defined elsewhere, and anything inside `clusterExternalSecrets.*.externalSecretSpec`, are used exactly as written.
+- **Name prefix and references.** When a `secretStoreRef.name` matches a store defined in this chart, `namePrefix` is added to the reference automatically. This applies to ExternalSecrets, PushSecrets and `clusterExternalSecrets.*.externalSecretSpec.secretStoreRef`, which also falls back to `defaults.secretStoreRef` when unset. References to stores defined elsewhere are used exactly as written.
 - **Disabling refresh.** `refreshInterval: 0` (or `"0"`) is kept as is, so ESO fetches once and never refreshes. It does not fall back to the default.
+- **Schema.** `values.schema.json` checks types and rejects unknown keys, so `enabled: "false"`, a typo such as `datafrom:`, an invalid store `kind` or a non-string label value fails at `helm install`/`template`/`lint` time. Provider and ESO spec contents (`provider`, `target`, `data`, …) are not constrained, so any ESO provider works.
 - **Validation.** Rendering fails with an `external-secrets-subchart: …` message for a missing `provider`, `data`/`dataFrom`, `externalSecretSpec`, PushSecret `selector`/`data` or store name, an invalid store `kind`, or an item that isn't a map. Note that `helm lint` only reports these as `[INFO]`; use `helm template` to see them as errors.
 - **Argo CD ordering.** To have stores sync before the ExternalSecrets that use them, give the stores `annotations: {argocd.argoproj.io/sync-wave: "-1"}`.
 
@@ -201,17 +202,17 @@ Every item accepts `enabled` (default `true`), `labels` and `annotations`. Names
 
 ## Releasing
 
-Charts are published to GitHub Container Registry as OCI artifacts by [`.github/workflows/release.yaml`](.github/workflows/release.yaml).
+Releases are automatic. [`.github/workflows/release.yaml`](.github/workflows/release.yaml) runs on every push to `main` and publishes when `Chart.yaml` has a `version` that has no `v<version>` tag yet. It lints and tests the chart, pushes `oci://ghcr.io/charalamposlamprou/charts/external-secrets-subchart:<version>`, then creates the `v<version>` tag and a GitHub Release with the packaged `.tgz` and generated notes. Pushes that don't change the version do nothing.
 
-1. Bump `version` in `Chart.yaml` (e.g. `0.2.0`) and commit.
-2. Tag and push. The tag must be `v` + the chart version, or the workflow fails before publishing:
-   ```bash
-   git tag v0.2.0 && git push origin v0.2.0
-   ```
-3. The workflow lints and renders the chart, then pushes `oci://ghcr.io/charalamposlamprou/charts/external-secrets-subchart:0.2.0`.
-4. Bump `version` in the consuming chart's `dependencies` and run `helm dependency update`.
+To release:
 
-**First release only:** GHCR creates new packages as **private**, even from a public repo. After the first tag is published, open your GitHub profile → **Packages** → `charts/external-secrets-subchart` → **Package settings** → **Change visibility** → **Public**. Later versions keep that visibility, and anyone can pull the chart without logging in.
+1. In your PR, bump `version` in `Chart.yaml` (e.g. `0.1.0` → `0.2.0`).
+2. Merge it. The release appears under **Releases** a minute later.
+3. Bump `version` in the consuming chart's `dependencies` and run `helm dependency update`.
+
+A PR check (`version-bump` in the `lint` workflow, script [`ci/check-version-bump.sh`](ci/check-version-bump.sh)) fails if a PR changes anything that goes into the package (`Chart.yaml`, `values*`, `templates/`, `README.md`) while keeping a version that is already released, or lowers the version. Changes to `ci/`, `tests/`, `examples/` or workflows don't need a bump. To retry a failed release, re-run the workflow, or start it from **Actions → release → Run workflow**.
+
+**First release only:** GHCR creates new packages as **private**, even from a public repo. After the first release, open https://github.com/users/charalamposlamprou/packages/container/charts%2Fexternal-secrets-subchart/settings (or your profile → **Packages** → `charts/external-secrets-subchart` → **Package settings**) and use **Danger Zone → Change visibility → Public**. Later versions keep that visibility, and anyone can pull the chart without logging in.
 
 Manual publish (without Actions; token needs `write:packages`):
 
@@ -224,8 +225,8 @@ helm package . && helm push external-secrets-subchart-0.2.0.tgz oci://ghcr.io/ch
 
 ```bash
 helm lint . --strict -f ci/full-values.yaml
-helm template test . -f ci/full-values.yaml          # surfaces validation failures
+tests/run.sh                                         # golden snapshots + expected failures
 (cd examples/parent-chart && helm dependency update && helm template my-app .)
 ```
 
-`ci/full-values.yaml` exercises every resource kind and the edge cases above. The `lint` workflow runs all three commands on every push and pull request.
+`tests/run.sh` needs only Helm and bash. It renders `ci/full-values.yaml` and every `tests/cases/*.values.yaml`, diffs each against its `*.golden.yaml`, and checks that invalid values fail with the expected message. After an intended template change, run `tests/run.sh --update` and review the golden diff. The `lint` workflow runs all three commands on every push and pull request.
