@@ -1,3 +1,7 @@
+# Every feature below is OFF until you set its `enabled: true`. Entries of a feature go
+# under its `items`, keyed by resource name (maps, not lists, so an environment file can
+# change, disable or remove a single entry). Each item can also set `enabled: false`.
+
 # -- Master switch. When false the subchart renders nothing.
 enabled: true
 
@@ -19,7 +23,8 @@ commonAnnotations: {}
 # -- Defaults applied to every ExternalSecret / PushSecret unless overridden per item.
 defaults:
   refreshInterval: 1h
-  # Store used when an item does not set its own secretStoreRef.
+  # Store used when an item sets neither `source` nor `secretStoreRef`.
+  # When empty and `aws` is enabled, the aws.defaultSource store is used.
   secretStoreRef:
     name: ""          # e.g. "vault-backend"; may be templated
     kind: SecretStore # or ClusterSecretStore
@@ -27,94 +32,109 @@ defaults:
     creationPolicy: Owner
     deletionPolicy: Retain
 
-# -- ServiceAccounts for store authentication, keyed by name. Typical use: one dedicated
-# account per app whose IAM role (IRSA) a SecretStore assumes via auth.jwt.serviceAccountRef.
-# Only ESO uses it (automountServiceAccountToken is false), so app pods can't assume the role.
-serviceAccounts: {}
-#  my-app-secrets:
-#    roleArn: arn:aws:iam::123456789012:role/my-app-secrets  # -> eks.amazonaws.com/role-arn; may be templated
-#    annotations: {}
-#    labels: {}
+# -- AWS with one IAM role per app (IRSA). Creates a ServiceAccount carrying `roleArn` and one
+# SecretStore per enabled service, all authenticating as that ServiceAccount. Only ESO uses
+# the account (token automount is off), so the app's own pods can't assume the role.
+aws:
+  enabled: false
+  roleArn: ""                  # arn:aws:iam::<account>:role/<app>-secrets; may be templated
+  region: ""                   # e.g. eu-west-1
+  # Rendered name, not prefixed with namePrefix. Must match the IAM role's trust policy.
+  serviceAccountName: ""       # default "<release name>-secrets"
+  serviceAccountAnnotations: {}
+  secretsManager:
+    enabled: false
+    storeName: aws-secrets-manager   # gets namePrefix like any store
+  parameterStore:
+    enabled: false
+    storeName: aws-parameter-store
+  # Store for items without `source`/`secretStoreRef`: secretsManager or parameterStore.
+  # Default: secretsManager when enabled, else parameterStore.
+  defaultSource: ""
 
-# -- Namespaced SecretStores, keyed by name. `provider` is passed through verbatim.
-# Maps (not lists) are used so a parent chart can override a single entry.
-secretStores: {}
-#  vault-backend:
-#    enabled: true
-#    provider:
-#      vault:
-#        server: https://vault.example.com
-#        path: secret
-#        version: v2
-#        auth:
-#          kubernetes:
-#            mountPath: kubernetes
-#            role: my-app
-#            serviceAccountRef:
-#              name: my-app
-#    # Any other SecretStore spec fields (retrySettings, refreshInterval, conditions, ...)
-#    extraSpec: {}
-
-# -- Cluster-scoped ClusterSecretStores, keyed by name. Same shape as secretStores.
-clusterSecretStores: {}
-
-# -- ExternalSecrets, keyed by name.
-externalSecrets: {}
-#  db-credentials:
-#    enabled: true
-#    refreshInterval: 30m
-#    secretStoreRef:            # optional, falls back to defaults.secretStoreRef
-#      name: vault-backend
-#      kind: SecretStore
-#    target:
-#      name: db-credentials     # defaults to the ExternalSecret name
-#      creationPolicy: Owner
-#      template:
-#        type: Opaque
-#        data:
-#          DATABASE_URL: "postgres://{{ .username }}:{{ .password }}@db:5432/app"
-#    data:
-#      - secretKey: username
-#        remoteRef:
-#          key: app/db
-#          property: username
-#      - secretKey: password
-#        remoteRef:
-#          key: app/db
-#          property: password
-#    dataFrom:
-#      - extract:
-#          key: app/config
-#    labels: {}
-#    annotations: {}
-
-# -- ClusterExternalSecrets, keyed by name. `externalSecretSpec` is a full ExternalSecret spec.
-clusterExternalSecrets: {}
-#  shared-registry-creds:
-#    namespaceSelectors:
-#      - matchLabels:
-#          team: payments
-#    refreshTime: 1m
-#    externalSecretName: registry-creds
-#    externalSecretSpec:
-#      secretStoreRef: {name: vault-global, kind: ClusterSecretStore}
-#      target: {name: registry-creds}
+# -- ExternalSecrets: remote secrets/parameters -> Kubernetes Secrets.
+externalSecrets:
+  enabled: false
+  items: {}
+#    db-credentials:
+#      source: secretsManager      # or parameterStore; needs aws.<source>.enabled
+#      # secretStoreRef:           # instead of source: any store, by name/kind
+#      #   name: vault-backend
+#      #   kind: SecretStore
+#      refreshInterval: 30m
+#      target:
+#        name: db-credentials     # defaults to the ExternalSecret name
+#        template:
+#          data:
+#            DATABASE_URL: "postgres://{{ .username }}:{{ .password }}@db:5432/app"
+#      data:
+#        - secretKey: username
+#          remoteRef: {key: my-app/db, property: username}
+#        - secretKey: password
+#          remoteRef: {key: my-app/db, property: password}
+#    app-config:
+#      source: parameterStore
+#      data:
+#        - secretKey: LOG_LEVEL
+#          remoteRef: {key: /my-app/log-level}
 #      dataFrom:
-#        - extract: {key: shared/registry}
+#        - find: {path: /my-app/config/}   # every parameter under the path
 
-# -- PushSecrets, keyed by name.
-pushSecrets: {}
-#  generated-api-key:
-#    refreshInterval: 1h
-#    secretStoreRefs:
-#      - name: vault-backend
-#        kind: SecretStore
-#    selector:
-#      secret:
-#        name: api-key
-#    data:
-#      - match:
-#          secretKey: key
-#          remoteRef:
-#            remoteKey: app/api-key
-#            property: key
+# -- PushSecrets: Kubernetes Secrets -> remote store.
+pushSecrets:
+  enabled: false
+  items: {}
+#    generated-api-key:
+#      source: secretsManager      # or secretStoreRefs: [{name, kind} | {labelSelector}]
+#      selector:
+#        secret: {name: api-key}
+#      data:
+#        - match:
+#            secretKey: key
+#            remoteRef: {remoteKey: my-app/api-key, property: key}
+
+# -- Extra ServiceAccounts for store auth (advanced; `aws` creates its own). `roleArn` sets
+# eks.amazonaws.com/role-arn. Reference one from a store's auth.jwt.serviceAccountRef.name.
+serviceAccounts:
+  enabled: false
+  items: {}
+#    other-role:
+#      roleArn: arn:aws:iam::123456789012:role/other-role
+
+# -- Namespaced SecretStores for any ESO provider (advanced; `aws` creates its own).
+# `provider` is passed through verbatim.
+secretStores:
+  enabled: false
+  items: {}
+#    vault-backend:
+#      provider:
+#        vault:
+#          server: https://vault.example.com
+#          path: secret
+#          version: v2
+#          auth:
+#            kubernetes: {mountPath: kubernetes, role: my-app, serviceAccountRef: {name: my-app}}
+#      # Any other SecretStore spec fields (retrySettings, refreshInterval, conditions, ...)
+#      extraSpec: {}
+
+# -- Cluster-scoped ClusterSecretStores. Same shape as secretStores.
+clusterSecretStores:
+  enabled: false
+  items: {}
+
+# -- ClusterExternalSecrets. `externalSecretSpec` is a full ExternalSecret spec; its
+# secretStoreRef must point at a store usable from the target namespaces (normally a
+# ClusterSecretStore), so it never falls back to the namespaced aws stores.
+clusterExternalSecrets:
+  enabled: false
+  items: {}
+#    shared-registry-creds:
+#      namespaceSelectors:
+#        - matchLabels: {team: payments}
+#      refreshTime: 1m
+#      externalSecretName: registry-creds
+#      externalSecretSpec:
+#        secretStoreRef: {name: aws-global, kind: ClusterSecretStore}
+#        target: {name: registry-creds}
+#        dataFrom:
+#          - extract: {key: shared/registry}

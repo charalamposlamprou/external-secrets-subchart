@@ -1,34 +1,39 @@
 image: nginx:1.27
 
-# Everything under the alias key is passed to the subchart.
+# Everything about this app's secrets lives in this one block (the subchart's alias).
+# Each feature is off until enabled.
 secrets:
   enabled: true
 
-  # A dedicated ServiceAccount carrying this app's IAM role (IRSA). Only ESO uses it;
-  # the app's own pods run under a different account and can't assume the role.
-  # Create the role with examples/terraform/irsa-role.
-  serviceAccounts:
-    my-app-secrets:
-      roleArn: arn:aws:iam::123456789012:role/my-app-secrets
-
-  secretStores:
-    aws:
-      provider:
-        aws:
-          service: SecretsManager
-          region: eu-west-1
-          auth:
-            jwt:
-              serviceAccountRef:
-                name: my-app-secrets
-
-  defaults:
-    secretStoreRef:
-      name: aws
-      kind: SecretStore
+  # One IAM role for this app (create it with examples/terraform/irsa-role).
+  # Renders ServiceAccount "<release>-secrets" with the role, plus one SecretStore per service.
+  aws:
+    enabled: true
+    roleArn: arn:aws:iam::123456789012:role/my-app-secrets
+    region: eu-west-1
+    secretsManager:
+      enabled: true
+    parameterStore:
+      enabled: true
 
   externalSecrets:
-    my-app-env:
-      dataFrom:
-        - extract:
-            key: my-app/env
+    enabled: true
+    items:
+      my-app-env:                       # Secret "my-app-env" <- every key of secret my-app/env
+        source: secretsManager
+        dataFrom:
+          - extract:
+              key: my-app/env
+      my-app-config:                    # Secret "my-app-config" <- parameters
+        source: parameterStore
+        data:
+          - secretKey: LOG_LEVEL
+            remoteRef:
+              key: /my-app/log-level
+        dataFrom:
+          - find:
+              path: /my-app/config/     # needs allow_find = true in the Terraform
+
+  pushSecrets:
+    enabled: false
+    items: {}

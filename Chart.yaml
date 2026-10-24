@@ -5,7 +5,7 @@ description: >-
   (SecretStore, ClusterSecretStore, ExternalSecret, ClusterExternalSecret, PushSecret)
   from values, for use as a dependency of an existing application chart.
 type: application
-version: 0.2.0
+version: 0.3.0
 keywords:
   - external-secrets
   - eso

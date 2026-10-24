@@ -1,0 +1,13 @@
+# Only Parameter Store enabled: it becomes the default; custom names, no namePrefix.
+aws:
+  enabled: true
+  roleArn: "arn:aws:iam::123456789012:role/{{ .Release.Name }}-params"
+  region: us-east-1
+  serviceAccountName: "{{ .Release.Name }}-params"
+  parameterStore: {enabled: true, storeName: params}
+externalSecrets:
+  enabled: true
+  items:
+    config:
+      dataFrom:
+        - find: {path: /config/}
