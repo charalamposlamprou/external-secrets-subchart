@@ -63,7 +63,7 @@ With the Terraform in [`examples/terraform/irsa-role`](examples/terraform/irsa-r
 
 ```hcl
 module "my_app_secrets_role" {
-  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.5.1"
+  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.5.2"
 
   cluster_name = "my-cluster"
   app          = "my-app"       # role "my-cluster-my-app-secrets"
@@ -87,14 +87,14 @@ output "my_app_secrets_role_arn" {
 
 The role trusts only `system:serviceaccount:<namespace>:<service_account>` through the cluster's OIDC provider. The chart names that ServiceAccount `<release name>-secrets` (change it with `aws.serviceAccountName`), so with a release named `my-app` the defaults line up.
 
-| Enabled | Actions | Resources |
-|---------|---------|-----------|
+| Input | Actions | Resources |
+|-------|---------|-----------|
 | `parameter_store` | `ssm:GetParameter`, `GetParameters`, `GetParametersByPath` (used by `fromPath`) | `parameter_path_prefixes` (default `/<app>/`) |
 | `secrets_manager` | `secretsmanager:GetSecretValue`, `DescribeSecret` | `secret_name_prefixes` (default `<app>/`) |
 | `kms_key_arns` | `kms:Decrypt` through SSM / Secrets Manager | the given keys |
 | `allow_find` | `secretsmanager:ListSecrets` | `*`. Only for Secrets Manager `find` in [advanced items](#advanced-full-eso-resources). |
 
-The role is named `<cluster_name>-<app>-secrets` by default, because IAM role names are unique per AWS account and several clusters (dev, staging, …) often share one. If you create the role another way, keep the same trust condition and permissions.
+The role is named `<cluster_name>-<app>-secrets` by default, because IAM role names are unique per AWS account and an account may hold several clusters. With [one account per environment](#one-aws-account-per-environment) that still works; the ARN simply differs per environment. If you create the role another way, keep the same trust condition and permissions.
 
 ### 2. Declare the dependency
 
@@ -102,7 +102,7 @@ The role is named `<cluster_name>-<app>-secrets` by default, because IAM role na
 # my-app/Chart.yaml
 dependencies:
   - name: external-secrets-subchart
-    version: 0.5.1
+    version: 0.5.2
     repository: oci://ghcr.io/charalamposlamprou/charts
     alias: secrets               # values live under `secrets:`
     condition: secrets.enabled
@@ -151,7 +151,7 @@ Each entry under `secrets` is one Kubernetes Secret with the same name. Inside a
 |-------|-------|
 | `KEY: /path/name` (Parameter Store) or `KEY: secret-name` (Secrets Manager) | the whole value |
 | `KEY: {key: secret-name, property: field}` | one JSON field (Secrets Manager, or a JSON parameter) |
-| `KEY: {key: secret-name, version: AWSPREVIOUS}` | a specific version or label |
+| `KEY: {key: name, version: …}` | a specific version: for Secrets Manager a stage such as `AWSPREVIOUS` (or `uuid/<version id>`), for Parameter Store a version number such as `"3"` |
 | `fromPath: /my-app/flags/` (Parameter Store) | every parameter under the path. The path prefix is stripped from key names, and deeper `/` become `_`. |
 | `fromSecret: my-app/env` (Secrets Manager) | every field of a JSON secret |
 | `refreshInterval: 5m` | how often ESO re-reads (`0` = once). Defaults to the block's `refreshInterval`, then `defaults.refreshInterval` (1h). |
@@ -159,7 +159,7 @@ Each entry under `secrets` is one Kubernetes Secret with the same name. Inside a
 | `template: {DATABASE_URL: "postgres://{{ .DB_USER }}@db/app"}` | extra keys built with [ESO templates](https://external-secrets.io/latest/guides/templating/) from the fetched keys. The fetched keys are kept too. |
 | `enabled: false` | keep the entry but don't render it (handy in `values-<env>.yaml`) |
 
-Secret keys may use letters, digits, `-`, `_` and `.`. The option names `enabled`, `refreshInterval`, `type`, `template` and `fromPath`/`fromSecret` are reserved, so a Secret key can't be called that; use the [advanced block](#advanced-full-eso-resources) if you need one. A Secret name may appear only once across both blocks. Rendering fails with an `external-secrets-subchart: …` message if a block is enabled without `aws.roleArn`/`aws.region`, an entry has no keys, or a value isn't a name or `{key: …}`.
+Secret keys may use letters, digits, `-`, `_` and `.`. The option names `enabled`, `refreshInterval`, `type`, `template` and `fromPath`/`fromSecret` are reserved, so a Secret key can't be called that; use the [advanced block](#advanced-full-eso-resources) if you need one. A Secret name may appear only once across both blocks and `externalSecrets.items`. Rendering fails with an `external-secrets-subchart: …` message if a block is enabled without `aws.roleArn`/`aws.region`, an entry has no keys, or a value isn't a name or `{key: …}`.
 
 ### 4. Use the generated Secrets in your templates
 
@@ -192,7 +192,7 @@ metadata:
     secret.reloader.stakater.com/reload: "my-app-config,my-app-env"
 ```
 
-Secrets mounted as volumes update in place without a restart, after the kubelet's sync delay.
+Secrets mounted as volumes update in place without a restart, after the kubelet's sync delay (mounts with `subPath` never update).
 
 ### Per-environment overrides
 
@@ -200,16 +200,18 @@ Secrets mounted as volumes update in place without a restart, after the kubelet'
 
 ```yaml
 secrets:
-  aws:
-    roleArn: arn:aws:iam::210987654321:role/my-cluster-my-app-secrets   # prod account
   parameterStore:
     secrets:
       my-app-config:
-        LOG_LEVEL: /my-app/prod/log-level    # replace one key
+        LOG_LEVEL: /my-app/prod/log-level    # replace one key (if environments share an account)
       my-app-flags:
         enabled: false                       # keep the entry, render nothing
-      legacy: null                           # remove the entry entirely
+  secretsManager:
+    secrets:
+      my-app-db: null                        # remove an entry defined in values.yaml
 ```
+
+Each environment also needs its own `aws.roleArn`; see the next section.
 
 ### One AWS account per environment
 
@@ -220,7 +222,7 @@ When dev, staging and prod are separate AWS accounts (each with its own EKS clus
 ```hcl
 # environments/dev/main.tf (provider configured for the dev account)
 module "my_app_secrets_role" {
-  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.5.1"
+  source = "git::https://github.com/charalamposlamprou/external-secrets-subchart.git//examples/terraform/irsa-role?ref=v0.5.2"
 
   cluster_name    = "dev"            # the dev account's EKS cluster
   app             = "my-app"
@@ -266,8 +268,10 @@ secrets:
 ```
 
 ```bash
-helm upgrade --install my-app ./my-app -n my-app -f my-app/values.yaml -f my-app/values-prod.yaml
+helm upgrade --install my-app ./my-app -n my-app -f my-app/values-prod.yaml
 ```
+
+Helm always applies the chart's own `values.yaml`, so only the environment's file is passed with `-f`.
 
 Each environment's role trusts only its own cluster's OIDC provider and grants access only within its own account, so dev can't read prod's secrets. If an environment encrypts with a customer-managed KMS key, pass that account's key in `kms_key_arns` for that environment.
 
@@ -321,7 +325,7 @@ secrets:
 ```yaml
 secrets:
   defaults:
-    secretStoreRef: {name: aws-secrets-manager, kind: ClusterSecretStore}
+    secretStoreRef: {name: shared-secrets-manager, kind: ClusterSecretStore}
   externalSecrets:
     enabled: true
     items:
@@ -354,31 +358,45 @@ secrets:
         dataFrom: [{extract: {key: my-app/env}}]
 ```
 
-PushSecrets need write permissions on the role (`ssm:PutParameter`/`AddTagsToResource`, or `secretsmanager:CreateSecret`/`PutSecretValue`/`TagResource`). Cluster-scoped resources need a Helm release identity that's allowed to create them.
+PushSecrets need write permissions on the role in addition to the read ones (`ssm:PutParameter`/`AddTagsToResource`, or `secretsmanager:CreateSecret`/`PutSecretValue`/`TagResource`); the Terraform module grants read access only. Cluster-scoped resources need a Helm release identity that's allowed to create them.
 
 ## Upgrading
 
 **From 0.4.**
-- **Store names:** the AWS stores are now `<release>-parameter-store` and `<release>-secrets-manager`, not `aws-parameter-store` and `aws-secrets-manager`, so two apps can share a namespace. Helm replaces the stores on upgrade and the ExternalSecrets follow; ESO re-syncs on its next refresh and the existing Kubernetes Secrets stay in place. If an advanced item references a store as `secretStoreRef: {name: aws-parameter-store}`, switch it to `source: parameterStore`.
+- **Store names:** the AWS stores are now `<release>-parameter-store` and `<release>-secrets-manager`, not `aws-parameter-store` and `aws-secrets-manager`, so two apps can share a namespace. Helm replaces the stores on upgrade and repoints the ExternalSecrets at the new names; ESO re-syncs them and the existing Kubernetes Secrets stay in place. If an advanced item references a store as `secretStoreRef: {name: aws-parameter-store}`, switch it to `source: parameterStore`.
 - **Terraform role name:** the default is now `<cluster_name>-<app>-secrets`. To keep a role created with 0.4, set `role_name = "<app>-secrets"`; otherwise Terraform replaces it and you update `aws.roleArn`.
 
 **From 0.3.** `aws.enabled`, `aws.secretsManager`, `aws.parameterStore` and `aws.defaultSource` are gone. Enabling `parameterStore` or `secretsManager` creates the store and ServiceAccount. You can move simple `externalSecrets.items` into those blocks or leave them where they are (`source:` still works):
 
 ```yaml
-# 0.3                                   # 0.4
-aws:                                    aws:
-  enabled: true                           roleArn: arn:...
-  roleArn: arn:...                        region: eu-west-1
-  region: eu-west-1                     parameterStore:
-  parameterStore: {enabled: true}         enabled: true
-externalSecrets:                          secrets:
-  enabled: true                             my-app-config:
-  items:                                      LOG_LEVEL: /my-app/log-level
-    my-app-config:
-      source: parameterStore
-      data:
-        - secretKey: LOG_LEVEL
-          remoteRef: {key: /my-app/log-level}
+# 0.3
+secrets:
+  aws:
+    enabled: true
+    roleArn: arn:aws:iam::123456789012:role/my-cluster-my-app-secrets
+    region: eu-west-1
+    parameterStore: {enabled: true}
+  externalSecrets:
+    enabled: true
+    items:
+      my-app-config:
+        source: parameterStore
+        data:
+          - secretKey: LOG_LEVEL
+            remoteRef: {key: /my-app/log-level}
+```
+
+```yaml
+# 0.4 and later
+secrets:
+  aws:
+    roleArn: arn:aws:iam::123456789012:role/my-cluster-my-app-secrets
+    region: eu-west-1
+  parameterStore:
+    enabled: true
+    secrets:
+      my-app-config:
+        LOG_LEVEL: /my-app/log-level
 ```
 
 Fix any `dataFrom.find` over Parameter Store that has only a `path`. ESO needs `name: {regexp: ".*"}` as well, and a `rewrite` to strip the path, because `/` isn't allowed in Secret keys. Or switch to `fromPath`, which does both.
@@ -402,7 +420,7 @@ Fix any `dataFrom.find` over Parameter Store that has only a `path`. ESO needs `
 | `secretsManager.secrets` | `{}` | Kubernetes Secrets to build; see [step 3](#3-list-the-apps-secrets). |
 | `apiVersion` | `external-secrets.io/v1` | API version for stores, ExternalSecret and ClusterExternalSecret. |
 | `pushSecretApiVersion` | `external-secrets.io/v1alpha1` | API version for PushSecret. |
-| `namePrefix` | `""` | Prefix for every resource name except the aws ServiceAccount. Rendered with `tpl`, e.g. `"{{ .Release.Name }}-"`. |
+| `namePrefix` | `""` | Prefix for every resource name except the AWS ServiceAccount and stores, which already include the release name. Rendered with `tpl`, e.g. `"{{ .Release.Name }}-"`. |
 | `commonLabels` / `commonAnnotations` | `{}` | Added to every resource (an item's own `labels`/`annotations` win on conflict). |
 | `defaults.refreshInterval` | `1h` | Default refresh interval. |
 | `defaults.secretStoreRef` | `{name: "", kind: SecretStore}` | Default store for advanced items. When the name is empty, the Secrets Manager store is used (or Parameter Store if only that is enabled). |
@@ -431,7 +449,7 @@ Every item accepts `enabled` (default `true`), `labels` and `annotations`. Names
 - **Disabling refresh.** `refreshInterval: 0` is kept as is, so ESO fetches once and never refreshes. It does not fall back to the default.
 - **Schema.** `values.schema.json` checks types and rejects unknown keys and invalid Secret key names, so `enabled: "true"`, `BAD/KEY:`, an unknown `source`, a malformed `roleArn` or an old layout fails at `helm install`/`template`/`lint` time. In `parameterStore`/`secretsManager` entries any valid key name is a Secret key, so a misspelt `fromPath` becomes a key and then fails because its value isn't a parameter name.
 - **Validation.** Rendering fails with an `external-secrets-subchart: …` message for missing or conflicting settings. `helm lint` only reports these as `[INFO]`; use `helm template` to see them as errors.
-- **Argo CD ordering.** To have stores sync before the ExternalSecrets that use them, add `argocd.argoproj.io/sync-wave: "-1"` to the stores' annotations (advanced blocks) or to `commonAnnotations`, overriding it per item.
+- **Argo CD ordering.** No sync waves are needed: an ExternalSecret whose store isn't ready yet is retried by ESO until it syncs. If you want stores to apply first anyway, set `argocd.argoproj.io/sync-wave` in the `annotations` of advanced-block stores and items (simple-block entries don't take annotations).
 
 ## Troubleshooting
 
@@ -462,20 +480,20 @@ To release:
 
 A PR check (`version-bump` in the `lint` workflow, script [`ci/check-version-bump.sh`](ci/check-version-bump.sh)) fails if a PR changes anything that goes into the package (`Chart.yaml`, `values*`, `templates/`, `README.md`) while keeping a version that is already released, or lowers the version. Changes to `ci/`, `tests/`, `examples/` or workflows don't need a bump. To retry a failed release, re-run the workflow, or start it from **Actions → release → Run workflow**.
 
-**First release only:** GHCR creates new packages as **private**, even from a public repo. After the first release, open https://github.com/users/charalamposlamprou/packages/container/charts%2Fexternal-secrets-subchart/settings (or your profile → **Packages** → `charts/external-secrets-subchart` → **Package settings**) and use **Danger Zone → Change visibility → Public**. Later versions keep that visibility, and anyone can pull the chart without logging in.
+The GHCR package is public, so anyone can pull it without logging in, and new versions keep that visibility. In a fork, GHCR may create the package as **private** on its first release; make it public under your profile → **Packages** → `charts/external-secrets-subchart` → **Package settings** → **Danger Zone → Change visibility**.
 
 Manual publish (without Actions; token needs `write:packages`):
 
 ```bash
 echo "$TOKEN" | helm registry login ghcr.io -u charalamposlamprou --password-stdin
-helm package . && helm push external-secrets-subchart-0.2.0.tgz oci://ghcr.io/charalamposlamprou/charts
+helm package . && helm push "external-secrets-subchart-$(helm show chart . | awk '/^version:/ {print $2}').tgz" oci://ghcr.io/charalamposlamprou/charts
 ```
 
 ## Development
 
 | Command | Checks | Needs |
 |---------|--------|-------|
-| `tests/run.sh` | Golden snapshots of rendered output, ~40 invalid-values cases, per-release name uniqueness (`--update` rewrites the goldens after an intended change) | Helm, bash |
+| `tests/run.sh` | Golden snapshots of rendered output (7 fixtures), 37 invalid-values cases, per-release name uniqueness (`--update` rewrites the goldens after an intended change) | Helm, bash |
 | `tests/check-docs.sh` | Every `values.yaml` key is in the README's values reference | bash |
 | `tests/validate-crds.sh v2.14.0` | Server-side dry-run of every fixture against that ESO release's CRDs | a throwaway cluster, e.g. `kind create cluster` |
 | `tests/e2e.sh` | Real ESO + mock AWS ([moto](https://github.com/getmoto/moto)): IRSA token → STS → Parameter Store / Secrets Manager → Kubernetes Secrets, value changes, two releases in one namespace | a throwaway cluster |
