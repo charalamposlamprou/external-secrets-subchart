@@ -44,13 +44,16 @@ Or from a local checkout next to your chart, which is handy while developing:
     repository: file://../external-secrets-subchart
 ```
 
-Then fetch it:
+Then fetch it. The package is public, so no login is needed:
 
 ```bash
-# Only needed for the private GHCR package (token needs read:packages)
-echo "$GITHUB_TOKEN" | helm registry login ghcr.io -u <github-user> --password-stdin
-
 helm dependency update ./my-app
+```
+
+To try a version on its own:
+
+```bash
+helm show values oci://ghcr.io/charalamposlamprou/charts/external-secrets-subchart --version 0.1.0
 ```
 
 ### 2. Configure secrets in your values
@@ -193,7 +196,7 @@ Every item accepts `enabled` (default `true`), `labels` and `annotations`. Names
 | `no matches for kind "ExternalSecret" in version "external-secrets.io/v1"` | ESO isn't installed, or is older than 0.17. Install/upgrade ESO, or set `apiVersion: external-secrets.io/v1beta1`. |
 | `has no secretStoreRef.name and defaults.secretStoreRef.name is empty` | Set `defaults.secretStoreRef.name`, or `secretStoreRef` on that item. |
 | ExternalSecret status `SecretSyncedError` | The store can't read the remote key. Check `kubectl describe externalsecret <name>` and the store's auth/permissions. |
-| `helm dependency update` returns 401/403 from ghcr.io | Run `helm registry login ghcr.io` with a token that has `read:packages`, and give the package access to the consuming repo. |
+| `helm dependency update` returns 401/403/404 from ghcr.io | The version hasn't been published yet, or the package is still private (see [Releasing](#releasing)). Check `oci://ghcr.io/charalamposlamprou/charts/external-secrets-subchart` and the version in your `Chart.yaml`. |
 | Workflow job fails in seconds with no logs | GitHub didn't start the runner (Actions disabled, or billing/spending limit for private repos). The run page banner shows the reason. |
 
 ## Releasing
@@ -208,7 +211,7 @@ Charts are published to GitHub Container Registry as OCI artifacts by [`.github/
 3. The workflow lints and renders the chart, then pushes `oci://ghcr.io/charalamposlamprou/charts/external-secrets-subchart:0.2.0`.
 4. Bump `version` in the consuming chart's `dependencies` and run `helm dependency update`.
 
-The package is private, like the repo. To let another repo's GitHub Actions pull it, open the package settings → **Manage Actions access**, add that repo, and log in there with its `GITHUB_TOKEN`.
+**First release only:** GHCR creates new packages as **private**, even from a public repo. After the first tag is published, open your GitHub profile → **Packages** → `charts/external-secrets-subchart` → **Package settings** → **Change visibility** → **Public**. Later versions keep that visibility, and anyone can pull the chart without logging in.
 
 Manual publish (without Actions; token needs `write:packages`):
 
