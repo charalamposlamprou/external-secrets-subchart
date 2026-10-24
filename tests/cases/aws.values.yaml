@@ -1,29 +1,49 @@
-# The aws block: one IAM role, both services, items choosing by source.
+# The simple blocks: one IAM role, Parameter Store and Secrets Manager secrets grouped by service.
 namePrefix: "{{ .Release.Name }}-"
 aws:
-  enabled: true
   roleArn: arn:aws:iam::123456789012:role/ci-secrets
   region: eu-west-1
   serviceAccountAnnotations: {owner: platform}
-  secretsManager: {enabled: true}
-  parameterStore: {enabled: true}
-externalSecrets:
+parameterStore:
+  enabled: true
+  refreshInterval: 10m
+  secrets:
+    app-config:
+      LOG_LEVEL: /ci/log-level
+      API_URL: /ci/api-url
+    app-flags:
+      fromPath: /ci/flags/          # strip prefix, nested "/" -> "_"
+      refreshInterval: 0            # per-entry override, kept as 0
+    mixed:
+      EXTRA: /ci/extra
+      fromPath: ci/more             # no slashes given: normalised to /ci/more
+    switched-off:
+      enabled: false
+      X: /ci/x
+    removed: null
+secretsManager:
+  enabled: true
+  secrets:
+    app-env:
+      fromSecret: ci/env
+    db-credentials:
+      DB_USER: {key: ci/db, property: username}
+      DB_PASS: {key: ci/db, property: password, version: AWSCURRENT}
+      API_TOKEN: ci/api-token
+externalSecrets:                    # advanced items still mix in, choosing a store by source
   enabled: true
   items:
-    from-default:              # no source: aws.defaultSource -> secretsManager
-      dataFrom:
-        - extract: {key: ci/env}
-    from-parameters:
+    templated:
       source: parameterStore
+      target:
+        template:
+          data: {DSN: "{{ .host }}:5432"}
       data:
-        - secretKey: LOG_LEVEL
-          remoteRef: {key: /ci/log-level}
+        - secretKey: host
+          remoteRef: {key: /ci/db-host}
+    from-default:                   # no source: Secrets Manager store
       dataFrom:
-        - find: {path: /ci/config/}
-    explicit-ref:              # secretStoreRef to an aws store by its key also gets the prefix
-      secretStoreRef: {name: aws-parameter-store}
-      dataFrom:
-        - extract: {key: /ci/other}
+        - extract: {key: ci/other}
 pushSecrets:
   enabled: true
   items:

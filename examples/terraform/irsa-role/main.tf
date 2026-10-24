@@ -65,7 +65,7 @@ data "aws_iam_policy_document" "read" {
       actions = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
       resources = flatten([
         for p in local.param_prefixes : [
-          # the path itself (GetParametersByPath) and everything under it
+          # the path itself (GetParametersByPath, used by fromPath) and everything under it
           "arn:${local.partition}:ssm:${local.region}:${local.account}:parameter${trimsuffix(p, "/")}",
           "arn:${local.partition}:ssm:${local.region}:${local.account}:parameter${trimsuffix(p, "/")}/*",
         ]
@@ -73,14 +73,13 @@ data "aws_iam_policy_document" "read" {
     }
   }
 
+  # Parameter Store `fromPath` needs nothing extra: ESO lists a path with GetParametersByPath,
+  # granted above on the same prefixes.
   dynamic "statement" {
-    for_each = var.allow_find ? [1] : []
+    for_each = var.allow_find && var.secrets_manager ? [1] : []
     content {
-      sid = "FindAppSecrets"
-      actions = concat(
-        var.secrets_manager ? ["secretsmanager:ListSecrets"] : [],
-        var.parameter_store ? ["ssm:DescribeParameters"] : [],
-      )
+      sid       = "FindAppSecrets"
+      actions   = ["secretsmanager:ListSecrets"]
       resources = ["*"]
     }
   }

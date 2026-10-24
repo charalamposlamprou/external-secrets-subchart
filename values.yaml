@@ -23,8 +23,8 @@ commonAnnotations: {}
 # -- Defaults applied to every ExternalSecret / PushSecret unless overridden per item.
 defaults:
   refreshInterval: 1h
-  # Store used when an item sets neither `source` nor `secretStoreRef`.
-  # When empty and `aws` is enabled, the aws.defaultSource store is used.
+  # Store for externalSecrets/pushSecrets items that set neither `source` nor `secretStoreRef`.
+  # When empty, the Secrets Manager store (or Parameter Store if only that is enabled) is used.
   secretStoreRef:
     name: ""          # e.g. "vault-backend"; may be templated
     kind: SecretStore # or ClusterSecretStore
@@ -32,32 +32,53 @@ defaults:
     creationPolicy: Owner
     deletionPolicy: Retain
 
-# -- AWS with one IAM role per app (IRSA). Creates a ServiceAccount carrying `roleArn` and one
-# SecretStore per enabled service, all authenticating as that ServiceAccount. Only ESO uses
-# the account (token automount is off), so the app's own pods can't assume the role.
+# -- The app's IAM role (IRSA), used by parameterStore and secretsManager below. Renders a
+# ServiceAccount carrying `roleArn`; only ESO uses it (token automount is off), so the app's
+# own pods can't assume the role. Required when either block is enabled.
 aws:
-  enabled: false
   roleArn: ""                  # arn:aws:iam::<account>:role/<app>-secrets; may be templated
   region: ""                   # e.g. eu-west-1
-  # Rendered name, not prefixed with namePrefix. Must match the IAM role's trust policy.
+  # Exact name, not prefixed with namePrefix. Must match the IAM role's trust policy.
   serviceAccountName: ""       # default "<release name>-secrets"
   serviceAccountAnnotations: {}
-  secretsManager:
-    enabled: false
-    storeName: aws-secrets-manager   # gets namePrefix like any store
-  parameterStore:
-    enabled: false
-    storeName: aws-parameter-store
-  # Store for items without `source`/`secretStoreRef`: secretsManager or parameterStore.
-  # Default: secretsManager when enabled, else parameterStore.
-  defaultSource: ""
+
+# -- SSM Parameter Store. Each entry under `secrets` becomes one Kubernetes Secret:
+# list SECRET_KEY: /parameter/name pairs, and/or `fromPath` to take every parameter under a path.
+parameterStore:
+  enabled: false
+  # refreshInterval: 1h        # for all entries; defaults.refreshInterval otherwise
+  secrets: {}
+#    my-app-config:              # -> Secret "my-app-config"
+#      LOG_LEVEL: /my-app/log-level
+#      API_URL: /my-app/api-url
+#    my-app-flags:
+#      fromPath: /my-app/flags/  # /my-app/flags/FEATURE_X -> key FEATURE_X (deeper "/" -> "_")
+#      refreshInterval: 5m
+
+# -- AWS Secrets Manager. Each entry under `secrets` becomes one Kubernetes Secret:
+# list SECRET_KEY: secret-name pairs ({key, property} for a JSON field), and/or `fromSecret`
+# to take every JSON field of one secret.
+secretsManager:
+  enabled: false
+  # refreshInterval: 1h
+  secrets: {}
+#    my-app-env:
+#      fromSecret: my-app/env    # every JSON field becomes a key
+#    db-credentials:
+#      DB_USER: {key: my-app/db, property: username}
+#      DB_PASS: {key: my-app/db, property: password}
+#      API_TOKEN: my-app/api-token   # plain-text secret
+
+# ---------------------------------------------------------------------------------------
+# Advanced: full ESO resources. Use these when the blocks above aren't enough
+# (templates, generators, other providers, cluster-scoped resources).
 
 # -- ExternalSecrets: remote secrets/parameters -> Kubernetes Secrets.
 externalSecrets:
   enabled: false
   items: {}
 #    db-credentials:
-#      source: secretsManager      # or parameterStore; needs aws.<source>.enabled
+#      source: secretsManager      # or parameterStore; that block must be enabled
 #      # secretStoreRef:           # instead of source: any store, by name/kind
 #      #   name: vault-backend
 #      #   kind: SecretStore
@@ -77,8 +98,6 @@ externalSecrets:
 #      data:
 #        - secretKey: LOG_LEVEL
 #          remoteRef: {key: /my-app/log-level}
-#      dataFrom:
-#        - find: {path: /my-app/config/}   # every parameter under the path
 
 # -- PushSecrets: Kubernetes Secrets -> remote store.
 pushSecrets:
@@ -93,7 +112,7 @@ pushSecrets:
 #            secretKey: key
 #            remoteRef: {remoteKey: my-app/api-key, property: key}
 
-# -- Extra ServiceAccounts for store auth (advanced; `aws` creates its own). `roleArn` sets
+# -- Extra ServiceAccounts for store auth (`aws` creates its own). `roleArn` sets
 # eks.amazonaws.com/role-arn. Reference one from a store's auth.jwt.serviceAccountRef.name.
 serviceAccounts:
   enabled: false
@@ -101,7 +120,7 @@ serviceAccounts:
 #    other-role:
 #      roleArn: arn:aws:iam::123456789012:role/other-role
 
-# -- Namespaced SecretStores for any ESO provider (advanced; `aws` creates its own).
+# -- Namespaced SecretStores for any ESO provider (parameterStore/secretsManager create their own).
 # `provider` is passed through verbatim.
 secretStores:
   enabled: false
@@ -124,7 +143,7 @@ clusterSecretStores:
 
 # -- ClusterExternalSecrets. `externalSecretSpec` is a full ExternalSecret spec; its
 # secretStoreRef must point at a store usable from the target namespaces (normally a
-# ClusterSecretStore), so it never falls back to the namespaced aws stores.
+# ClusterSecretStore), so it never falls back to the namespaced AWS stores.
 clusterExternalSecrets:
   enabled: false
   items: {}

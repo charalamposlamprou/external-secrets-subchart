@@ -56,9 +56,6 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
         "roleArn": {
           "$ref": "#/definitions/roleArn"
         },
@@ -70,19 +67,108 @@
         },
         "serviceAccountAnnotations": {
           "$ref": "#/definitions/stringMap"
+        }
+      }
+    },
+    "parameterStore": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
         },
-        "secretsManager": {
-          "$ref": "#/definitions/awsService"
+        "refreshInterval": {
+          "$ref": "#/definitions/duration"
         },
-        "parameterStore": {
-          "$ref": "#/definitions/awsService"
+        "secrets": {
+          "type": "object",
+          "additionalProperties": {
+            "description": "One Kubernetes Secret: SECRET_KEY: name pairs plus optional fromPath.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "refreshInterval": {
+                "$ref": "#/definitions/duration"
+              },
+              "fromPath": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Take every parameter under this path."
+              }
+            },
+            "patternProperties": {
+              "^[-._a-zA-Z0-9]+$": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "$ref": "#/definitions/remoteName"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "secretsManager": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
         },
-        "defaultSource": {
-          "enum": [
-            "",
-            "secretsManager",
-            "parameterStore"
-          ]
+        "refreshInterval": {
+          "$ref": "#/definitions/duration"
+        },
+        "secrets": {
+          "type": "object",
+          "additionalProperties": {
+            "description": "One Kubernetes Secret: SECRET_KEY: name pairs plus optional fromSecret.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "refreshInterval": {
+                "$ref": "#/definitions/duration"
+              },
+              "fromSecret": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Take every JSON field of this secret."
+              }
+            },
+            "patternProperties": {
+              "^[-._a-zA-Z0-9]+$": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "$ref": "#/definitions/remoteName"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
         }
       }
     },
@@ -438,19 +524,6 @@
         "parameterStore"
       ]
     },
-    "awsService": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "storeName": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
-    },
     "storeKind": {
       "enum": [
         "SecretStore",
@@ -468,6 +541,34 @@
           "$ref": "#/definitions/storeKind"
         }
       }
+    },
+    "remoteName": {
+      "description": "Parameter/secret name, or {key, property, version}.",
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "key"
+          ],
+          "properties": {
+            "key": {
+              "type": "string",
+              "minLength": 1
+            },
+            "property": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          }
+        }
+      ]
     }
   }
 }

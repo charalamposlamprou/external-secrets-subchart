@@ -1,39 +1,28 @@
 image: nginx:1.27
 
-# Everything about this app's secrets lives in this one block (the subchart's alias).
-# Each feature is off until enabled.
+# Everything about this app's secrets, in one block (the subchart's alias).
 secrets:
-  enabled: true
-
-  # One IAM role for this app (create it with examples/terraform/irsa-role).
-  # Renders ServiceAccount "<release>-secrets" with the role, plus one SecretStore per service.
+  # The app's IAM role (create it with examples/terraform/irsa-role).
   aws:
-    enabled: true
     roleArn: arn:aws:iam::123456789012:role/my-app-secrets
     region: eu-west-1
-    secretsManager:
-      enabled: true
-    parameterStore:
-      enabled: true
 
-  externalSecrets:
+  # SSM Parameter Store: each entry is one Kubernetes Secret.
+  parameterStore:
     enabled: true
-    items:
-      my-app-env:                       # Secret "my-app-env" <- every key of secret my-app/env
-        source: secretsManager
-        dataFrom:
-          - extract:
-              key: my-app/env
-      my-app-config:                    # Secret "my-app-config" <- parameters
-        source: parameterStore
-        data:
-          - secretKey: LOG_LEVEL
-            remoteRef:
-              key: /my-app/log-level
-        dataFrom:
-          - find:
-              path: /my-app/config/     # needs allow_find = true in the Terraform
+    secrets:
+      my-app-config:
+        LOG_LEVEL: /my-app/log-level
+        API_URL: /my-app/api-url
+      my-app-flags:
+        fromPath: /my-app/flags/      # every parameter under the path
 
-  pushSecrets:
-    enabled: false
-    items: {}
+  # AWS Secrets Manager: each entry is one Kubernetes Secret.
+  secretsManager:
+    enabled: true
+    secrets:
+      my-app-env:
+        fromSecret: my-app/env        # every JSON field of the secret
+      my-app-db:
+        DB_USER: {key: my-app/db, property: username}
+        DB_PASS: {key: my-app/db, property: password}

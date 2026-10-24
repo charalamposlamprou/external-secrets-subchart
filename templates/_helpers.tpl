@@ -59,41 +59,114 @@ Usage: include "eso-sub.featureItems" (dict "root" $ "feature" "externalSecrets"
 {{- end -}}
 
 {{/*
-AWS block as YAML when aws.enabled, else empty:
+AWS setup as YAML when secretsManager and/or parameterStore is enabled, else empty:
   serviceAccountName: rendered IRSA account name (no namePrefix)
-  stores: {secretsManager: <store key>, parameterStore: <store key>} for the enabled services
-  defaultStore: store key used by items without secretStoreRef/source
+  stores: {secretsManager: aws-secrets-manager, parameterStore: aws-parameter-store} for the enabled ones
+  defaultStore: store key used by externalSecrets items without secretStoreRef/source
 Usage: include "eso-sub.aws" $ | fromYaml
 */}}
 {{- define "eso-sub.aws" -}}
+{{- $stores := dict -}}
+{{- if (.Values.secretsManager | default dict).enabled -}}{{- $_ := set $stores "secretsManager" "aws-secrets-manager" -}}{{- end -}}
+{{- if (.Values.parameterStore | default dict).enabled -}}{{- $_ := set $stores "parameterStore" "aws-parameter-store" -}}{{- end -}}
+{{- if $stores -}}
 {{- $a := .Values.aws | default dict -}}
-{{- if $a.enabled -}}
+{{- $using := keys $stores | sortAlpha | join " and " -}}
 {{- if not $a.roleArn -}}
-{{- fail "external-secrets-subchart: aws.enabled is true but aws.roleArn is empty" -}}
+{{- fail (printf "external-secrets-subchart: %s enabled but aws.roleArn is empty" $using) -}}
 {{- end -}}
 {{- if not $a.region -}}
-{{- fail "external-secrets-subchart: aws.enabled is true but aws.region is empty" -}}
-{{- end -}}
-{{- $stores := dict -}}
-{{- $sm := $a.secretsManager | default dict -}}
-{{- $ps := $a.parameterStore | default dict -}}
-{{- if $sm.enabled -}}{{- $_ := set $stores "secretsManager" ($sm.storeName | default "aws-secrets-manager") -}}{{- end -}}
-{{- if $ps.enabled -}}{{- $_ := set $stores "parameterStore" ($ps.storeName | default "aws-parameter-store") -}}{{- end -}}
-{{- if not $stores -}}
-{{- fail "external-secrets-subchart: aws.enabled is true but neither aws.secretsManager.enabled nor aws.parameterStore.enabled is set" -}}
-{{- end -}}
-{{- if eq (get $stores "secretsManager") (get $stores "parameterStore") -}}
-{{- fail "external-secrets-subchart: aws.secretsManager.storeName and aws.parameterStore.storeName must differ" -}}
-{{- end -}}
-{{- $defaultSource := $a.defaultSource | default (ternary "secretsManager" "parameterStore" (hasKey $stores "secretsManager")) -}}
-{{- if not (hasKey $stores $defaultSource) -}}
-{{- fail (printf "external-secrets-subchart: aws.defaultSource is %q, but aws.%s.enabled is false" $defaultSource $defaultSource) -}}
+{{- fail (printf "external-secrets-subchart: %s enabled but aws.region is empty" $using) -}}
 {{- end -}}
 {{- toYaml (dict
   "serviceAccountName" (tpl ($a.serviceAccountName | default "{{ .Release.Name }}-secrets") .)
   "stores" $stores
-  "defaultStore" (get $stores $defaultSource)) -}}
+  "defaultStore" (get $stores "secretsManager" | default (get $stores "parameterStore"))) -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+ExternalSecret items generated from a simple block (parameterStore or secretsManager).
+Each entry of `<block>.secrets` is one Kubernetes Secret; its keys are Secret keys mapped to
+a parameter/secret name (string) or {key, property, version}. Reserved entry keys:
+enabled, refreshInterval, and fromPath (parameterStore) / fromSecret (secretsManager).
+Usage: include "eso-sub.simpleItems" (dict "root" $ "block" "parameterStore") | fromYaml
+*/}}
+{{- define "eso-sub.simpleItems" -}}
+{{- $block := .block -}}
+{{- $b := index .root.Values $block | default dict -}}
+{{- $items := dict -}}
+{{- if $b.enabled -}}
+{{- $fromKey := ternary "fromPath" "fromSecret" (eq $block "parameterStore") -}}
+{{- $reserved := list "enabled" "refreshInterval" $fromKey -}}
+{{- range $name, $e := ($b.secrets | default dict) -}}
+{{- if not (kindIs "invalid" $e) -}}
+{{- $desc := printf "%s.secrets.%s" $block $name -}}
+{{- if not (kindIs "map" $e) -}}
+{{- fail (printf "external-secrets-subchart: %s must be a map of SECRET_KEY: name, got %s" $desc (kindOf $e)) -}}
+{{- end -}}
+{{- $data := list -}}
+{{- range $k, $v := $e -}}
+{{- if not (has $k $reserved) -}}
+{{- if and (kindIs "string" $v) $v -}}
+{{- $data = append $data (dict "secretKey" $k "remoteRef" (dict "key" $v)) -}}
+{{- else if and (kindIs "map" $v) $v.key -}}
+{{- $data = append $data (dict "secretKey" $k "remoteRef" $v) -}}
+{{- else -}}
+{{- fail (printf "external-secrets-subchart: %s.%s must be a name or {key: ..., property: ...}" $desc $k) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $item := dict "source" $block -}}
+{{- if $data -}}{{- $_ := set $item "data" $data -}}{{- end -}}
+{{- with get $e $fromKey -}}
+{{- if eq $block "parameterStore" -}}
+{{- /* Every parameter under the path; keys lose the path prefix, deeper "/" become "_". */ -}}
+{{- $path := printf "/%s" (trimAll "/" .) -}}
+{{- $find := dict "path" $path "name" (dict "regexp" ".*") -}}
+{{- $rewrite := list
+  (dict "regexp" (dict "source" (printf "^%s/" (regexQuoteMeta $path)) "target" ""))
+  (dict "regexp" (dict "source" "/" "target" "_")) -}}
+{{- $_ := set $item "dataFrom" (list (dict "find" $find "rewrite" $rewrite)) -}}
+{{- else -}}
+{{- $_ := set $item "dataFrom" (list (dict "extract" (dict "key" .))) -}}
+{{- end -}}
+{{- end -}}
+{{- if not (or $item.data $item.dataFrom) -}}
+{{- fail (printf "external-secrets-subchart: %s has no keys; add SECRET_KEY: name entries or %s" $desc $fromKey) -}}
+{{- end -}}
+{{- if hasKey $e "refreshInterval" -}}
+{{- $_ := set $item "refreshInterval" $e.refreshInterval -}}
+{{- else if hasKey $b "refreshInterval" -}}
+{{- $_ := set $item "refreshInterval" $b.refreshInterval -}}
+{{- end -}}
+{{- if hasKey $e "enabled" -}}{{- $_ := set $item "enabled" $e.enabled -}}{{- end -}}
+{{- $_ := set $items $name $item -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml $items -}}
+{{- end -}}
+
+{{/*
+All ExternalSecrets to render: externalSecrets.items plus the parameterStore and secretsManager
+blocks. A name may appear only once across them.
+Usage: include "eso-sub.externalSecretItems" $ | fromYaml
+*/}}
+{{- define "eso-sub.externalSecretItems" -}}
+{{- $items := include "eso-sub.featureItems" (dict "root" . "feature" "externalSecrets") | fromYaml -}}
+{{- $from := dict -}}
+{{- range $name, $_ := $items -}}{{- $_ := set $from $name "externalSecrets.items" -}}{{- end -}}
+{{- range $block := list "parameterStore" "secretsManager" -}}
+{{- range $name, $item := include "eso-sub.simpleItems" (dict "root" $ "block" $block) | fromYaml -}}
+{{- if hasKey $from $name -}}
+{{- fail (printf "external-secrets-subchart: Secret %q is defined in both %s and %s.secrets; names must be unique" $name (get $from $name) $block) -}}
+{{- end -}}
+{{- $_ := set $from $name (printf "%s.secrets" $block) -}}
+{{- $_ := set $items $name $item -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml $items -}}
 {{- end -}}
 
 {{/*
@@ -107,7 +180,7 @@ Usage: include "eso-sub.secretStoreItems" $ | fromYaml
 {{- $auth := dict "jwt" (dict "serviceAccountRef" (dict "name" .serviceAccountName)) -}}
 {{- range $source, $storeName := .stores -}}
 {{- if hasKey $items $storeName -}}
-{{- fail (printf "external-secrets-subchart: aws.%s store %q is also defined in secretStores.items; rename one" $source $storeName) -}}
+{{- fail (printf "external-secrets-subchart: %s store %q is also defined in secretStores.items; rename one" $source $storeName) -}}
 {{- end -}}
 {{- $service := ternary "SecretsManager" "ParameterStore" (eq $source "secretsManager") -}}
 {{- $aws := dict "service" $service "region" $.Values.aws.region "auth" (deepCopy $auth) -}}
@@ -150,7 +223,7 @@ Usage: include "eso-sub.requireFeature" (dict "root" $ "feature" "secretStores" 
 
 {{/*
 Resolve a secretStoreRef. Order: `source` (aws service of this item), the item's own
-secretStoreRef, defaults.secretStoreRef, then aws.defaultSource. Fails if no store name is set.
+secretStoreRef, defaults.secretStoreRef, then the aws default store (Secrets Manager if enabled). Fails if no store name is set.
 Pass "noAwsFallback" true where a namespaced aws store is unusable (ClusterExternalSecret).
 Usage: include "eso-sub.storeRef" (dict "root" $ "ref" $item.secretStoreRef "source" $item.source "item" $name)
 */}}
@@ -167,11 +240,8 @@ Usage: include "eso-sub.storeRef" (dict "root" $ "ref" $item.secretStoreRef "sou
 {{- if $ref.name -}}
 {{- fail (printf "external-secrets-subchart: %s sets both source and secretStoreRef; use one" .item) -}}
 {{- end -}}
-{{- if not $aws -}}
-{{- fail (printf "external-secrets-subchart: %s has source %q, but aws.enabled is false" .item .source) -}}
-{{- end -}}
-{{- if not (hasKey $aws.stores .source) -}}
-{{- fail (printf "external-secrets-subchart: %s has source %q, but aws.%s.enabled is false" .item .source .source) -}}
+{{- if not (hasKey ($aws.stores | default dict) .source) -}}
+{{- fail (printf "external-secrets-subchart: %s has source %q, but %s.enabled is false" .item .source .source) -}}
 {{- end -}}
 {{- $name = get $aws.stores .source -}}
 {{- $kind = "SecretStore" -}}
@@ -184,7 +254,7 @@ Usage: include "eso-sub.storeRef" (dict "root" $ "ref" $item.secretStoreRef "sou
 {{- fail (printf "external-secrets-subchart: %s has secretStoreRef.kind %q; must be SecretStore or ClusterSecretStore" .item $kind) -}}
 {{- end -}}
 {{- if not $name -}}
-{{- fail (printf "external-secrets-subchart: %s has no secretStoreRef.name and defaults.secretStoreRef.name is empty (or enable aws)" .item) -}}
+{{- fail (printf "external-secrets-subchart: %s has no secretStoreRef.name and defaults.secretStoreRef.name is empty (or enable secretsManager/parameterStore)" .item) -}}
 {{- end -}}
 {{- /* Stores defined in this chart get the same namePrefix as the store itself. */ -}}
 {{- $isCluster := eq $kind "ClusterSecretStore" -}}

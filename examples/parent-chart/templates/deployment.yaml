@@ -18,3 +18,7 @@ spec:
                 name: my-app-env
             - secretRef:
                 name: my-app-config
+            - secretRef:
+                name: my-app-flags
+            - secretRef:
+                name: my-app-db

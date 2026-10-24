@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.3.0
+    helm.sh/chart: external-secrets-subchart-0.4.0
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/ci-params
 automountServiceAccountToken: false
@@ -28,11 +28,11 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.3.0
+    helm.sh/chart: external-secrets-subchart-0.4.0
 spec:
   refreshInterval: "1h"
   secretStoreRef:
-    name: params
+    name: aws-parameter-store
     kind: SecretStore
   target:
     creationPolicy: Owner
@@ -40,13 +40,22 @@ spec:
     name: config
   dataFrom:
     - find:
-        path: /config/
+        name:
+          regexp: .*
+        path: /config
+      rewrite:
+      - regexp:
+          source: ^/config/
+          target: ""
+      - regexp:
+          source: /
+          target: _
 ---
-# Source: external-secrets-subchart/templates/secretstore.yaml
+# Source: external-secrets-subchart/templates/externalsecret.yaml
 apiVersion: external-secrets.io/v1
-kind: SecretStore
+kind: ExternalSecret
 metadata:
-  name: params
+  name: fallback
   namespace: default
   labels:
     app.kubernetes.io/component: external-secrets
@@ -54,7 +63,33 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.3.0
+    helm.sh/chart: external-secrets-subchart-0.4.0
+spec:
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: aws-parameter-store
+    kind: SecretStore
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    name: fallback
+  dataFrom:
+    - extract:
+        key: /config/json-blob
+---
+# Source: external-secrets-subchart/templates/secretstore.yaml
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: aws-parameter-store
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.4.0
 spec:
   provider:
     aws:
