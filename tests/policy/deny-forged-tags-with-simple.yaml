@@ -1,0 +1,11 @@
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata: {name: forged-tags-with-simple, namespace: attacker}
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: us-east-1
+      role: arn:aws:iam::123456789012:role/victim-secrets
+      sessionTagsPolicy: Simple
+      sessionTags: [{key: esoNamespace, value: victim}]

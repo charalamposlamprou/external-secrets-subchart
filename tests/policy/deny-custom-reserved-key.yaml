@@ -1,0 +1,11 @@
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata: {name: custom-reserved-key, namespace: attacker}
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: us-east-1
+      role: arn:aws:iam::123456789012:role/victim-secrets
+      sessionTagsPolicy: Custom
+      customSessionTags: {esoNamespace: victim}   # rejected by ESO's CRD, not by our policy

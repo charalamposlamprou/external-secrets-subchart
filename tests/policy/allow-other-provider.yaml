@@ -1,0 +1,11 @@
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata: {name: vault, namespace: attacker}
+spec:
+  provider:
+    vault:
+      server: https://vault.example.com
+      path: secret
+      version: v2
+      auth:
+        kubernetes: {mountPath: kubernetes, role: x, serviceAccountRef: {name: x}}

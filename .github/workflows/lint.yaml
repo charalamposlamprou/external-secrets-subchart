@@ -42,6 +42,9 @@ jobs:
         with:
           cluster_name: eso-crds
       - run: tests/validate-crds.sh "${{ matrix.eso }}"
+      - name: Admission policy for Pod Identity
+        if: matrix.eso != 'v0.17.0'   # session tags need ESO >= 2.5.0
+        run: tests/validate-policy.sh
 
   e2e:
     name: e2e (ESO 2.14.0 + mock AWS)

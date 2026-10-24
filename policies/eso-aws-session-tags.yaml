@@ -1,0 +1,56 @@
+# Required for aws.auth: podIdentity. Apply once per cluster (platform team), before any app
+# uses Pod Identity:  kubectl apply -f policies/eso-aws-session-tags.yaml
+#
+# Why: in Pod Identity mode each app role trusts the ESO controller only for sessions tagged
+# esoNamespace=<app namespace>. ESO sets that tag itself when a store uses
+# sessionTagsPolicy Simple or Custom, but a store can also leave the policy at None and list
+# its own spec.provider.aws.sessionTags, e.g. esoNamespace=<someone else's namespace>, and ESO
+# sends them as written. Without this policy, anyone who can create a SecretStore could assume
+# another app's role. This policy makes the namespace tag unforgeable:
+#   1. no hand-written spec.provider.aws.sessionTags on any AWS store;
+#   2. an AWS store that assumes a role must use sessionTagsPolicy Simple or Custom, so ESO
+#      always adds the real esoNamespace (ESO's CRD already rejects esoNamespace, esoStoreName
+#      and esoStoreKind in customSessionTags, and ESO sets them last).
+# Stores without `role` (e.g. IRSA stores using auth.jwt) are unaffected.
+# Needs Kubernetes >= 1.30 (ValidatingAdmissionPolicy GA) and ESO >= 2.5.0.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: eso-aws-session-tags
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["external-secrets.io"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["secretstores", "clustersecretstores"]
+  variables:
+    - name: aws
+      expression: "has(object.spec.provider) && has(object.spec.provider.aws)"
+  validations:
+    - expression: >-
+        !variables.aws || !has(object.spec.provider.aws.sessionTags) ||
+        size(object.spec.provider.aws.sessionTags) == 0
+      message: >-
+        spec.provider.aws.sessionTags is not allowed: hand-written session tags could
+        impersonate another namespace. Use sessionTagsPolicy Simple (or Custom with
+        customSessionTags).
+      reason: Forbidden
+    - expression: >-
+        !variables.aws || !has(object.spec.provider.aws.role) ||
+        object.spec.provider.aws.role == '' ||
+        (has(object.spec.provider.aws.sessionTagsPolicy) &&
+         object.spec.provider.aws.sessionTagsPolicy in ['Simple', 'Custom'])
+      message: >-
+        an AWS store with spec.provider.aws.role must set sessionTagsPolicy Simple or Custom,
+        so ESO tags the session with the real esoNamespace.
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: eso-aws-session-tags
+spec:
+  policyName: eso-aws-session-tags
+  validationActions: [Deny]
