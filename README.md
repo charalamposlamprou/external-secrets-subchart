@@ -124,9 +124,31 @@ helm lint . --strict -f ci/full-values.yaml
 helm template test . -f ci/full-values.yaml
 ```
 
-## Publishing (optional)
+## Releasing
+
+Charts are published to GitHub Container Registry as OCI artifacts by `.github/workflows/release.yaml`.
+
+1. Bump `version` in `Chart.yaml` (e.g. `0.2.0`) and commit.
+2. Tag and push. The tag must be `v` + the chart version, or the workflow fails:
+   ```bash
+   git tag v0.2.0 && git push origin v0.2.0
+   ```
+3. The chart is pushed to `oci://ghcr.io/charalamposlamprou/charts/external-secrets-subchart:0.2.0`.
+
+Consume it from your app chart:
+
+```yaml
+dependencies:
+  - name: external-secrets-subchart
+    version: 0.2.0
+    repository: oci://ghcr.io/charalamposlamprou/charts
+```
+
+The package is private, like the repo. To pull it, run `helm registry login ghcr.io` with a token that has `read:packages`. For another repo's GitHub Actions, grant that repo access in the package settings (Manage Actions access), then log in with its `GITHUB_TOKEN`.
+
+Manual publish (without Actions):
 
 ```bash
-helm package .
-helm push external-secrets-subchart-0.1.0.tgz oci://ghcr.io/<you>/charts
+echo "$TOKEN" | helm registry login ghcr.io -u charalamposlamprou --password-stdin   # needs write:packages
+helm package . && helm push external-secrets-subchart-0.1.0.tgz oci://ghcr.io/charalamposlamprou/charts
 ```
