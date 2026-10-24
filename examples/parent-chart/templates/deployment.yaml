@@ -2,6 +2,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Release.Name }}
+  annotations:
+    # Optional: with Stakater Reloader installed, pods restart when these Secrets change.
+    secret.reloader.stakater.com/reload: "my-app-config,my-app-flags,my-app-env,my-app-db"
 spec:
   selector:
     matchLabels: {app: {{ .Release.Name }}}

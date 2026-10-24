@@ -2,6 +2,7 @@
 # with read access to that app's secrets and/or parameters only.
 
 locals {
+  role_name       = coalesce(var.role_name, "${var.cluster_name}-${var.app}-secrets")
   service_account = coalesce(var.service_account, "${var.app}-secrets")
   secret_prefixes = coalesce(var.secret_name_prefixes, ["${var.app}/"])
   param_prefixes  = coalesce(var.parameter_path_prefixes, ["/${var.app}/"])
@@ -100,13 +101,19 @@ data "aws_iam_policy_document" "read" {
 }
 
 resource "aws_iam_role" "this" {
-  name               = "${var.app}-secrets"
-  assume_role_policy = data.aws_iam_policy_document.trust.json
+  name                 = local.role_name
+  assume_role_policy   = data.aws_iam_policy_document.trust.json
+  permissions_boundary = var.permissions_boundary
+  tags                 = var.tags
 
   lifecycle {
     precondition {
       condition     = var.secrets_manager || var.parameter_store
       error_message = "Enable at least one of secrets_manager or parameter_store."
+    }
+    precondition {
+      condition     = length(local.role_name) <= 64
+      error_message = "IAM role names are at most 64 characters; set role_name."
     }
   }
 }

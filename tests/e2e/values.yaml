@@ -1,0 +1,29 @@
+# Values for tests/e2e.sh: every simple-block feature, read through IRSA from a mock AWS.
+aws:
+  roleArn: arn:aws:iam::123456789012:role/e2e-my-app-secrets
+  region: us-east-1
+parameterStore:
+  enabled: true
+  secrets:
+    my-app-config:
+      LOG_LEVEL: /my-app/log-level
+      API_URL: /my-app/api-url
+    my-app-flags:
+      fromPath: /my-app/flags/
+    my-app-dsn:
+      DB_HOST: /my-app/db/host
+      DB_PASS: /my-app/db/password       # SecureString
+      template:
+        DATABASE_URL: "postgres://app:{{ .DB_PASS }}@{{ .DB_HOST }}:5432/app"
+secretsManager:
+  enabled: true
+  secrets:
+    my-app-env:
+      fromSecret: my-app/env
+    my-app-db:
+      DB_USER: {key: my-app/db, property: username}
+      DB_PASS: {key: my-app/db, property: password}
+      API_TOKEN: my-app/api-token
+    my-app-registry:
+      type: kubernetes.io/dockerconfigjson
+      .dockerconfigjson: my-app/registry-auth

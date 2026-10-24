@@ -4,7 +4,7 @@ image: nginx:1.27
 secrets:
   # The app's IAM role (create it with examples/terraform/irsa-role).
   aws:
-    roleArn: arn:aws:iam::123456789012:role/my-app-secrets
+    roleArn: arn:aws:iam::123456789012:role/my-cluster-my-app-secrets
     region: eu-west-1
 
   # SSM Parameter Store: each entry is one Kubernetes Secret.
