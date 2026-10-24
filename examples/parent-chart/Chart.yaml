@@ -3,10 +3,10 @@ name: my-app
 version: 1.0.0
 dependencies:
   - name: external-secrets-subchart
-    version: 0.6.2
+    version: 0.6.3
     # For a local checkout:
     repository: file://../..
     # Or straight from this Git repo with the helm-git plugin, or from an OCI registry:
     # repository: oci://ghcr.io/<your-user>/charts
-    alias: secrets
-    condition: secrets.enabled
+    alias: eso
+    condition: eso.enabled

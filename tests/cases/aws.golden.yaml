@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.6.2
+    helm.sh/chart: external-secrets-subchart-0.6.3
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/ci-secrets
     owner: platform
@@ -29,7 +29,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.6.2
+    helm.sh/chart: external-secrets-subchart-0.6.3
 spec:
   refreshInterval: "10m"
   secretStoreRef:
@@ -59,7 +59,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.6.2
+    helm.sh/chart: external-secrets-subchart-0.6.3
 spec:
   refreshInterval: "1h"
   secretStoreRef:
@@ -85,7 +85,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.6.2
+    helm.sh/chart: external-secrets-subchart-0.6.3
 spec:
   refreshInterval: "0"
   secretStoreRef:
@@ -120,7 +120,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.6.2
+    helm.sh/chart: external-secrets-subchart-0.6.3
 spec:
   refreshInterval: "1h"
   secretStoreRef:
@@ -160,7 +160,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.6.2
+    helm.sh/chart: external-secrets-subchart-0.6.3
 spec:
   refreshInterval: "10m"
   secretStoreRef:
@@ -195,7 +195,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.6.2
+    helm.sh/chart: external-secrets-subchart-0.6.3
 spec:
   refreshInterval: "1h"
   secretStoreRef:
@@ -221,7 +221,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.6.2
+    helm.sh/chart: external-secrets-subchart-0.6.3
 spec:
   refreshInterval: "10m"
   secretStoreRef:
@@ -260,7 +260,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.6.2
+    helm.sh/chart: external-secrets-subchart-0.6.3
 spec:
   refreshInterval: "1h"
   secretStoreRef:
@@ -290,7 +290,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.6.2
+    helm.sh/chart: external-secrets-subchart-0.6.3
 spec:
   refreshInterval: "1h"
   secretStoreRef:
@@ -320,7 +320,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.6.2
+    helm.sh/chart: external-secrets-subchart-0.6.3
 spec:
   refreshInterval: "1h"
   secretStoreRefs:
@@ -347,7 +347,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.6.2
+    helm.sh/chart: external-secrets-subchart-0.6.3
 spec:
   provider:
     aws:
@@ -370,7 +370,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/name: external-secrets-subchart
     app.kubernetes.io/part-of: ci
-    helm.sh/chart: external-secrets-subchart-0.6.2
+    helm.sh/chart: external-secrets-subchart-0.6.3
 spec:
   provider:
     aws:
