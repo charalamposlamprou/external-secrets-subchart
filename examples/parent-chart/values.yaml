@@ -3,21 +3,30 @@ image: nginx:1.27
 # Everything under the alias key is passed to the subchart.
 secrets:
   enabled: true
+
+  # A dedicated ServiceAccount carrying this app's IAM role (IRSA). Only ESO uses it;
+  # the app's own pods run under a different account and can't assume the role.
+  # Create the role with examples/terraform/irsa-role.
+  serviceAccounts:
+    my-app-secrets:
+      roleArn: arn:aws:iam::123456789012:role/my-app-secrets
+
+  secretStores:
+    aws:
+      provider:
+        aws:
+          service: SecretsManager
+          region: eu-west-1
+          auth:
+            jwt:
+              serviceAccountRef:
+                name: my-app-secrets
+
   defaults:
     secretStoreRef:
-      name: vault-backend
+      name: aws
       kind: SecretStore
-  secretStores:
-    vault-backend:
-      provider:
-        vault:
-          server: https://vault.example.com
-          path: secret
-          version: v2
-          auth:
-            kubernetes:
-              mountPath: kubernetes
-              role: my-app
+
   externalSecrets:
     my-app-env:
       dataFrom:

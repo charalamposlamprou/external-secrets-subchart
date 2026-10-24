@@ -27,6 +27,15 @@ defaults:
     creationPolicy: Owner
     deletionPolicy: Retain
 
+# -- ServiceAccounts for store authentication, keyed by name. Typical use: one dedicated
+# account per app whose IAM role (IRSA) a SecretStore assumes via auth.jwt.serviceAccountRef.
+# Only ESO uses it (automountServiceAccountToken is false), so app pods can't assume the role.
+serviceAccounts: {}
+#  my-app-secrets:
+#    roleArn: arn:aws:iam::123456789012:role/my-app-secrets  # -> eks.amazonaws.com/role-arn; may be templated
+#    annotations: {}
+#    labels: {}
+
 # -- Namespaced SecretStores, keyed by name. `provider` is passed through verbatim.
 # Maps (not lists) are used so a parent chart can override a single entry.
 secretStores: {}

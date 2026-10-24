@@ -1,0 +1,124 @@
+---
+# Source: external-secrets-subchart/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ci-app-secrets
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.2.0
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/app-secrets
+automountServiceAccountToken: false
+---
+# Source: external-secrets-subchart/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ci-shared-secrets
+  namespace: platform
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.2.0
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/ci-shared
+automountServiceAccountToken: false
+---
+# Source: external-secrets-subchart/templates/secretstore.yaml
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: ci-aws-shared
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.2.0
+spec:
+  provider:
+    aws:
+      auth:
+        jwt:
+          serviceAccountRef:
+            name: ci-shared-secrets
+            namespace: platform
+      region: eu-west-1
+      service: SecretsManager
+---
+# Source: external-secrets-subchart/templates/secretstore.yaml
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: ci-controller-role
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.2.0
+spec:
+  provider:
+    aws:
+      region: eu-west-1
+      service: ParameterStore
+---
+# Source: external-secrets-subchart/templates/externalsecret.yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ci-app-env
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.2.0
+spec:
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: ci-aws
+    kind: SecretStore
+  target:
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    name: ci-app-env
+  dataFrom:
+    - extract:
+        key: app/env
+---
+# Source: external-secrets-subchart/templates/secretstore.yaml
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: ci-aws
+  namespace: default
+  labels:
+    app.kubernetes.io/component: external-secrets
+    app.kubernetes.io/instance: ci
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: external-secrets-subchart
+    app.kubernetes.io/part-of: ci
+    helm.sh/chart: external-secrets-subchart-0.2.0
+spec:
+  provider:
+    aws:
+      auth:
+        jwt:
+          serviceAccountRef:
+            name: ci-app-secrets
+      region: eu-west-1
+      service: SecretsManager
