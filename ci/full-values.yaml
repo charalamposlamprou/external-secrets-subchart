@@ -39,9 +39,15 @@ externalSecrets:
   aws-config:
     secretStoreRef: {name: aws-global, kind: ClusterSecretStore}
     refreshInterval: 15m
+    labels: {team: app}   # overrides commonLabels.team
     annotations: {argocd.argoproj.io/sync-wave: "-1"}
     dataFrom:
       - extract: {key: app/config}
+  fetch-once:
+    refreshInterval: 0     # int 0 = never refresh; must not fall back to defaults
+    dataFrom:
+      - extract: {key: app/static}
+  removed-by-override: null
 clusterExternalSecrets:
   registry:
     namespaceSelectors:
@@ -57,6 +63,15 @@ clusterExternalSecrets:
       dataFrom:
         - extract: {key: shared/registry}
 pushSecrets:
+  by-label:
+    secretStoreRefs:
+      - labelSelector:
+          matchLabels: {push-target: "true"}
+    selector: {secret: {name: api-key}}
+    data:
+      - match:
+          secretKey: key
+          remoteRef: {remoteKey: app/api-key-copy}
   api-key:
     selector: {secret: {name: api-key}}
     data:

@@ -6,11 +6,10 @@ description: >-
   from values, for use as a dependency of an existing application chart.
 type: application
 version: 0.1.0
-appVersion: "v1"
 keywords:
   - external-secrets
   - eso
   - secrets
   - subchart
-annotations:
-  external-secrets.io/min-operator-version: "0.17.0"
+sources:
+  - https://github.com/charalamposlamprou/external-secrets-subchart

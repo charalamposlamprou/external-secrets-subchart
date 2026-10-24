@@ -6,6 +6,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
       - run: helm lint . --strict
       - run: helm lint . --strict -f ci/full-values.yaml
       - run: helm template ci . -f ci/full-values.yaml

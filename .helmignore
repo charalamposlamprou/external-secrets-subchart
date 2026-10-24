@@ -9,3 +9,6 @@
 .vscode/
 ci/
 examples/
+.github/
+dist/
+*.tgz
